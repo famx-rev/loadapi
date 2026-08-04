@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader - Clean Favicon & Leftmost Info Button
+ * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect
  */
 (function () {
   'use strict';
@@ -188,31 +188,52 @@ export default function handler(req, res) {
     var bar = document.createElement('div');
     var popover = document.createElement('div');
     var avatarContainer = document.createElement('span');
+    var faviconImg = document.createElement('img');
 
     function applyThemeStyles(isDark) {
       bar.style.cssText =
         'display:flex;align-items:center;gap:10px;height:' + BAR_HEIGHT + 'px;width:100%;' +
-        'padding:0 14px;box-sizing:border-box;' +
+        'padding:0 14px;box-sizing:border-box;cursor:pointer;' +
         'backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);' +
         (isDark
           ? 'background:rgba(24,24,27,0.92);border-bottom:1px solid rgba(255,255,255,0.1);color:#f3f4f6;'
           : 'background:rgba(255,255,255,0.92);border-bottom:1px solid rgba(0,0,0,0.08);color:#111827;');
 
-      // Force transparent background in both Light and Dark modes
       if (avatarContainer) {
         avatarContainer.style.background = 'transparent';
+      }
+
+      if (faviconImg) {
+        faviconImg.style.cssText =
+          'width:100%;height:100%;object-fit:contain;display:block;background:transparent;' +
+          (isDark ? 'mix-blend-mode:lighten;' : 'mix-blend-mode:multiply;');
       }
 
       if (popover) {
         popover.style.cssText =
           'display:none;position:absolute;top:48px;left:14px;width:280px;padding:12px;border-radius:8px;' +
           'box-shadow:0 10px 25px -5px rgba(0,0,0,0.15),0 8px 10px -6px rgba(0,0,0,0.1);z-index:2147483647;' +
-          'font-size:12px;line-height:1.5;' +
+          'font-size:12px;line-height:1.5;cursor:default;' +
           (isDark
             ? 'background:#18181b;color:#e4e4e7;border:1px solid rgba(255,255,255,0.15);'
             : 'background:#ffffff;color:#374151;border:1px solid rgba(0,0,0,0.1);');
       }
     }
+
+    // Full Bar Click Handler (Goes to Promoted Website)
+    function handlePromoVisit(e) {
+      var target = promotion.url || '#';
+      if (target !== '#') {
+        window.open(target, '_blank', 'noopener,noreferrer');
+      }
+      track('click', {
+        device: detectDevice(),
+        referrer: window.location.hostname,
+        promoted_id: promotion.id,
+      });
+    }
+
+    bar.addEventListener('click', handlePromoVisit);
 
     // Left Brand Area
     var brand = document.createElement('div');
@@ -235,21 +256,31 @@ export default function handler(req, res) {
       popover.style.display = popover.style.display === 'none' ? 'block' : 'none';
     });
 
-    var brandText = document.createElement('span');
-    brandText.textContent = 'Loadbar';
-    brandText.style.cssText =
+    // Brand Text Link -> Redirects to loadbar.vercel.app
+    var brandLink = document.createElement('a');
+    brandLink.href = 'https://loadbar.vercel.app';
+    brandLink.target = '_blank';
+    brandLink.rel = 'noopener noreferrer';
+    brandLink.textContent = 'Loadbar';
+    brandLink.style.cssText =
       'font-size:11px;font-weight:700;text-transform:uppercase;' +
-      'letter-spacing:0.05em;opacity:0.6;';
+      'letter-spacing:0.05em;opacity:0.6;color:currentColor;text-decoration:none;cursor:pointer;';
+    brandLink.addEventListener('click', function(e) {
+      e.stopPropagation();
+    });
 
-    // Appended on the far left (info button FIRST, then LOADBAR text)
     brand.appendChild(infoBtn);
-    brand.appendChild(brandText);
+    brand.appendChild(brandLink);
 
     // Left Popover Box
     popover.innerHTML =
       '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Founder-to-founder growth</div>' +
       '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup\\\'s products for free mutual traffic. No ads, no cost.</div>' +
       '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free &rarr;</a>';
+
+    popover.addEventListener('click', function(e) {
+      e.stopPropagation();
+    });
 
     document.addEventListener('click', function(e) {
       if (popover.style.display === 'block' && !popover.contains(e.target) && e.target !== infoBtn) {
@@ -271,9 +302,7 @@ export default function handler(req, res) {
       'width:22px;height:22px;border-radius:5px;display:flex;align-items:center;' +
       'justify-content:center;overflow:hidden;flex-shrink:0;background:transparent;';
 
-    var faviconImg = document.createElement('img');
     faviconImg.src = faviconUrl;
-    faviconImg.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block;background:transparent;';
 
     faviconImg.onerror = function () {
       avatarContainer.innerHTML = '';
@@ -320,12 +349,9 @@ export default function handler(req, res) {
     visitBtn.addEventListener('mouseleave', function () {
       visitBtn.style.background = 'rgba(125,125,125,0.12)';
     });
-    visitBtn.addEventListener('click', function () {
-      track('click', {
-        device: detectDevice(),
-        referrer: window.location.hostname,
-        promoted_id: promotion.id,
-      });
+    visitBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      handlePromoVisit(e);
     });
 
     // Right Action: Close Button
@@ -335,7 +361,8 @@ export default function handler(req, res) {
     closeBtn.style.cssText =
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
       'color:currentColor;opacity:0.6;cursor:pointer;padding:0 4px;line-height:1;';
-    closeBtn.addEventListener('click', function () {
+    closeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
       isDismissed = true;
       if (layoutObserver) {
         layoutObserver.disconnect();
