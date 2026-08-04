@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader with Clean Favicon URL parsing
+ * Loadbar widget loader with SPA / Dynamic Layout Observer
  */
 (function () {
   'use strict';
@@ -26,6 +26,7 @@ export default function handler(req, res) {
 
   var apiBase = 'https://loadapi.vercel.app';
   var BAR_HEIGHT = 44;
+  var layoutObserver = null;
 
   function detectTheme() {
     var dataTheme = thisScript.getAttribute('data-theme');
@@ -62,12 +63,11 @@ export default function handler(req, res) {
     var target = rawUrl || rawDomain || '';
     if (!target) return '';
     try {
-      // If it doesn't start with a protocol, prepend https://
       if (!/^https?:\\/\\//i.test(target)) {
         target = 'https://' + target;
       }
       var parsed = new URL(target);
-      return parsed.origin; // e.g., "https://github.com"
+      return parsed.origin;
     } catch (e) {
       return target;
     }
@@ -125,14 +125,17 @@ export default function handler(req, res) {
     try {
       if (!el || el.nodeType !== 1) return;
       if (el === root || (root && root.contains && root.contains(el))) return;
-      if (el.dataset && el.dataset.loadbarShifted === '1') return;
-
+      
       var cs = window.getComputedStyle(el);
       if (cs.position !== 'fixed' && cs.position !== 'sticky') return;
 
       var topRaw = cs.top;
       if (!topRaw || topRaw === 'auto') return;
-      if (!/px$/.test(topRaw)) return;
+
+      // Check if element was reset by React/Vue re-render
+      if (el.dataset && el.dataset.loadbarShifted === '1') {
+        if (el.style.top === (BAR_HEIGHT + 'px') || parseFloat(topRaw) >= BAR_HEIGHT) return;
+      }
 
       var originalPx = parseFloat(topRaw);
       if (isNaN(originalPx)) return;
@@ -213,11 +216,10 @@ export default function handler(req, res) {
     var divider = document.createElement('span');
     divider.style.cssText = 'width:1px;height:14px;background:currentColor;opacity:0.15;flex-shrink:0;';
 
-    // Promoted Startup Content
+    // Content
     var profile = document.createElement('div');
     profile.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1;';
 
-    // Build clean unencoded URL parameter for Google Favicon API
     var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
     var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + cleanTargetUrl + '&size=128';
 
@@ -256,7 +258,7 @@ export default function handler(req, res) {
     profile.appendChild(avatarContainer);
     profile.appendChild(profileText);
 
-    // "Visit" Action Link
+    // Visit Button
     var visitBtn = document.createElement('a');
     visitBtn.href = promotion.url || '#';
     visitBtn.target = '_blank';
@@ -289,6 +291,7 @@ export default function handler(req, res) {
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
       'color:currentColor;opacity:0.6;cursor:pointer;padding:0 4px;line-height:1;';
     closeBtn.addEventListener('click', function () {
+      if (layoutObserver) layoutObserver.disconnect();
       root.remove();
       if (body) body.style.paddingTop = originalBodyPaddingTop;
       if (html) html.style.scrollPaddingTop = originalScrollPaddingTop;
@@ -304,7 +307,7 @@ export default function handler(req, res) {
     root.appendChild(bar);
     body.appendChild(root);
 
-    // Adjust Page Offset
+    // Body Adjustments
     if (body) {
       var existingPad = parseInt(window.getComputedStyle(body).paddingTop) || 0;
       body.style.paddingTop = (existingPad + BAR_HEIGHT) + 'px';
@@ -313,24 +316,34 @@ export default function handler(req, res) {
       html.style.scrollPaddingTop = BAR_HEIGHT + 'px';
     }
 
-    // Dynamic Theme Observer
+    // Continuous Layout Observer for SPA Route Changes and Dashboard UI Updates
     try {
-      var observer = new MutationObserver(function () {
+      layoutObserver = new MutationObserver(function () {
+        sweepFixedElements(root);
+        
         var newTheme = detectTheme();
         if (newTheme !== currentTheme) {
           currentTheme = newTheme;
           applyThemeStyles(newTheme === 'dark');
         }
       });
-      var opts = { attributes: true, attributeFilter: ['class', 'data-theme', 'data-color-scheme', 'data-mode', 'color-scheme'] };
-      if (html) observer.observe(html, opts);
-      if (body) observer.observe(body, opts);
+
+      var targetNode = body || html;
+      if (targetNode) {
+        layoutObserver.observe(targetNode, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['style', 'class', 'data-theme']
+        });
+      }
     } catch (e) {}
 
-    // Adjust Fixed/Sticky Navigation Elements
+    // SPA Navigation Listeners
+    window.addEventListener('popstate', function() { sweepFixedElements(root); });
+    window.addEventListener('hashchange', function() { sweepFixedElements(root); });
+
     sweepFixedElements(root);
-    setTimeout(function () { sweepFixedElements(root); }, 250);
-    setTimeout(function () { sweepFixedElements(root); }, 800);
 
     track('impression', {
       device: detectDevice(),
