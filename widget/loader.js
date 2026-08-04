@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader - Favicon Inversion Fix for Dark Mode
+ * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect
  */
 (function () {
   'use strict';
@@ -204,12 +204,9 @@ export default function handler(req, res) {
       }
 
       if (faviconImg) {
-        // Invert colors in dark mode and use mix-blend-mode: screen to make dark background transparent
         faviconImg.style.cssText =
           'width:100%;height:100%;object-fit:contain;display:block;background:transparent;' +
-          (isDark
-            ? 'filter:invert(1);mix-blend-mode:screen;'
-            : 'filter:none;mix-blend-mode:normal;');
+          (isDark ? 'mix-blend-mode:lighten;' : 'mix-blend-mode:multiply;');
       }
 
       if (popover) {
@@ -223,7 +220,7 @@ export default function handler(req, res) {
       }
     }
 
-    // Full Bar Click Handler
+    // Full Bar Click Handler (Goes to Promoted Website)
     function handlePromoVisit(e) {
       var target = promotion.url || '#';
       if (target !== '#') {
@@ -242,6 +239,7 @@ export default function handler(req, res) {
     var brand = document.createElement('div');
     brand.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
 
+    // Far Left Info (i) Button
     var infoBtn = document.createElement('button');
     infoBtn.textContent = 'i';
     infoBtn.setAttribute('aria-label', 'About Loadbar');
@@ -258,6 +256,7 @@ export default function handler(req, res) {
       popover.style.display = popover.style.display === 'none' ? 'block' : 'none';
     });
 
+    // Brand Text Link -> Redirects to loadbar.vercel.app
     var brandLink = document.createElement('a');
     brandLink.href = 'https://loadbar.vercel.app';
     brandLink.target = '_blank';
