@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader with Teardown Safety & Observer Cleanup
+ * Loadbar widget loader with Transparent Favicon Backgrounds in Dark Mode
  */
 (function () {
   'use strict';
@@ -186,6 +186,7 @@ export default function handler(req, res) {
       'font-size:13px;line-height:1.4;';
 
     var bar = document.createElement('div');
+    var avatarContainer = document.createElement('span');
 
     function applyThemeStyles(isDark) {
       bar.style.cssText =
@@ -195,9 +196,12 @@ export default function handler(req, res) {
         (isDark
           ? 'background:rgba(24,24,27,0.92);border-bottom:1px solid rgba(255,255,255,0.1);color:#f3f4f6;'
           : 'background:rgba(255,255,255,0.92);border-bottom:1px solid rgba(0,0,0,0.08);color:#111827;');
-    }
 
-    applyThemeStyles(currentTheme === 'dark');
+      // Force completely transparent background for avatar image container in dark mode
+      if (avatarContainer) {
+        avatarContainer.style.background = isDark ? 'transparent' : gradient(promotion);
+      }
+    }
 
     // Brand Logo/Label
     var brand = document.createElement('div');
@@ -224,25 +228,26 @@ export default function handler(req, res) {
     var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
     var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + cleanTargetUrl + '&size=128';
 
-    var avatarContainer = document.createElement('span');
     avatarContainer.style.cssText =
       'width:22px;height:22px;border-radius:5px;display:flex;align-items:center;' +
-      'justify-content:center;overflow:hidden;flex-shrink:0;' +
-      'background:' + gradient(promotion) + ';';
+      'justify-content:center;overflow:hidden;flex-shrink:0;background:transparent;';
 
     var faviconImg = document.createElement('img');
     faviconImg.src = faviconUrl;
-    faviconImg.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+    faviconImg.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block;background:transparent;';
 
     faviconImg.onerror = function () {
       avatarContainer.innerHTML = '';
       var initialSpan = document.createElement('span');
       initialSpan.textContent = (promotion.name || '?')[0].toUpperCase();
       initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
+      avatarContainer.style.background = gradient(promotion);
       avatarContainer.appendChild(initialSpan);
     };
 
     avatarContainer.appendChild(faviconImg);
+
+    applyThemeStyles(currentTheme === 'dark');
 
     var profileText = document.createElement('p');
     profileText.style.cssText =
