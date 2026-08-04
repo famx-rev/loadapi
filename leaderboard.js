@@ -7,23 +7,21 @@ export default async function handler(req, res) {
   const limit = Math.min(parseInt(req.query.limit || '20', 10) || 20, 100);
 
   try {
-    const [startups] = await pool.execute(
+    const [startups] = await pool.query(
       `SELECT id, name, domain, tagline, url, accent_from, accent_to, verified, created_at
-       FROM startups ORDER BY created_at DESC LIMIT ?`,
-      [limit],
+       FROM startups ORDER BY created_at DESC LIMIT ${limit}`,
     );
 
     if (startups.length === 0) return json(res, { leaderboard: [] });
 
     const ids = startups.map((s) => s.id);
-    const placeholders = ids.map(() => '?').join(',');
+    const quotedIds = ids.map((id) => pool.escape(id)).join(',');
 
-    const [agg] = await pool.execute(
+    const [agg] = await pool.query(
       `SELECT startup_id, kind, COUNT(*) as count
        FROM events
-       WHERE startup_id IN (${placeholders}) AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+       WHERE startup_id IN (${quotedIds}) AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
        GROUP BY startup_id, kind`,
-      ids,
     );
 
     const stats = new Map();
@@ -43,7 +41,8 @@ export default async function handler(req, res) {
     leaderboard.forEach((s, i) => { s.rank = i + 1; });
 
     return json(res, { leaderboard });
-  } catch {
+  } catch (err) {
+    console.error('leaderboard error:', err);
     return errorResponse(res, 'Could not load leaderboard', 500);
   }
 }
