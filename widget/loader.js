@@ -438,7 +438,7 @@ export default function handler(req, res) {
       promoted_id: promoId,
     });
   }
-})();\`;
+})();`;
 
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=300');
