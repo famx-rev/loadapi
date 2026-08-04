@@ -277,10 +277,10 @@ export default function handler(req, res) {
     brand.appendChild(infoBtn);
     brand.appendChild(brandLink);
 
-    // Left Popover Box (Cleaned unescaped apostrophe)
+    // Left Popover Box (Cleaned unescaped apostrophe using HTML entity)
     popover.innerHTML =
       '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Founder-to-founder growth</div>' +
-      '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup\'s products for free mutual traffic. No ads, no cost.</div>' +
+      '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup&#39;s products for free mutual traffic. No ads, no cost.</div>' +
       '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free &rarr;</a>';
 
     popover.addEventListener('click', function(e) {
@@ -438,7 +438,7 @@ export default function handler(req, res) {
       promoted_id: promoId,
     });
   }
-})();`;
+})();\`;
 
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=300');
