@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader with Auto Dark/Light theme & Favicon rendering
+ * Loadbar widget loader with Clean Favicon URL parsing
  */
 (function () {
   'use strict';
@@ -56,6 +56,21 @@ export default function handler(req, res) {
     } catch (e) {}
 
     return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+
+  function cleanUrl(rawUrl, rawDomain) {
+    var target = rawUrl || rawDomain || '';
+    if (!target) return '';
+    try {
+      // If it doesn't start with a protocol, prepend https://
+      if (!/^https?:\\/\\//i.test(target)) {
+        target = 'https://' + target;
+      }
+      var parsed = new URL(target);
+      return parsed.origin; // e.g., "https://github.com"
+    } catch (e) {
+      return target;
+    }
   }
 
   function gradient(s) {
@@ -202,9 +217,9 @@ export default function handler(req, res) {
     var profile = document.createElement('div');
     profile.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1;';
 
-    // Favicon Element with Fallback
-    var targetUrl = promotion.url || (promotion.domain ? 'https://' + promotion.domain : '');
-    var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + encodeURIComponent(targetUrl) + '&size=128';
+    // Build clean unencoded URL parameter for Google Favicon API
+    var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
+    var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + cleanTargetUrl + '&size=128';
 
     var avatarContainer = document.createElement('span');
     avatarContainer.style.cssText =
@@ -217,7 +232,6 @@ export default function handler(req, res) {
     faviconImg.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
 
     faviconImg.onerror = function () {
-      // Fallback to text initial if favicon fails to load
       avatarContainer.innerHTML = '';
       var initialSpan = document.createElement('span');
       initialSpan.textContent = (promotion.name || '?')[0].toUpperCase();
