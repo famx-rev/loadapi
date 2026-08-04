@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect
+ * Loadbar widget loader - Clean Transparent Favicon in Dark Mode
  */
 (function () {
   'use strict';
@@ -204,9 +204,10 @@ export default function handler(req, res) {
       }
 
       if (faviconImg) {
+        // Keep true background transparency while making dark icons visible in dark mode
         faviconImg.style.cssText =
           'width:100%;height:100%;object-fit:contain;display:block;background:transparent;' +
-          (isDark ? 'mix-blend-mode:lighten;' : 'mix-blend-mode:multiply;');
+          (isDark ? 'filter:drop-shadow(0px 0px 1px rgba(255,255,255,0.8));' : 'filter:none;');
       }
 
       if (popover) {
@@ -220,7 +221,7 @@ export default function handler(req, res) {
       }
     }
 
-    // Full Bar Click Handler (Goes to Promoted Website)
+    // Full Bar Click Handler
     function handlePromoVisit(e) {
       var target = promotion.url || '#';
       if (target !== '#') {
@@ -239,7 +240,6 @@ export default function handler(req, res) {
     var brand = document.createElement('div');
     brand.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
 
-    // Far Left Info (i) Button
     var infoBtn = document.createElement('button');
     infoBtn.textContent = 'i';
     infoBtn.setAttribute('aria-label', 'About Loadbar');
@@ -256,7 +256,6 @@ export default function handler(req, res) {
       popover.style.display = popover.style.display === 'none' ? 'block' : 'none';
     });
 
-    // Brand Text Link -> Redirects to loadbar.vercel.app
     var brandLink = document.createElement('a');
     brandLink.href = 'https://loadbar.vercel.app';
     brandLink.target = '_blank';
