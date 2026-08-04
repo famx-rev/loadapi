@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader - Fixed Unescaped String Quotes Syntax Error
+ * Loadbar widget loader - Clean Favicon & Leftmost Info Button
  */
 (function () {
   'use strict';
@@ -198,8 +198,9 @@ export default function handler(req, res) {
           ? 'background:rgba(24,24,27,0.92);border-bottom:1px solid rgba(255,255,255,0.1);color:#f3f4f6;'
           : 'background:rgba(255,255,255,0.92);border-bottom:1px solid rgba(0,0,0,0.08);color:#111827;');
 
+      // Force transparent background in both Light and Dark modes
       if (avatarContainer) {
-        avatarContainer.style.background = isDark ? 'transparent' : gradient(promotion);
+        avatarContainer.style.background = 'transparent';
       }
 
       if (popover) {
@@ -217,18 +218,7 @@ export default function handler(req, res) {
     var brand = document.createElement('div');
     brand.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
 
-    var logo = document.createElement('span');
-    logo.style.cssText =
-      'width:14px;height:14px;border-radius:3px;display:inline-block;' +
-      'background:' + gradient(promotion) + ';';
-
-    var brandText = document.createElement('span');
-    brandText.textContent = 'Loadbar';
-    brandText.style.cssText =
-      'font-size:11px;font-weight:700;text-transform:uppercase;' +
-      'letter-spacing:0.05em;opacity:0.6;';
-
-    // Left Info (i) Button
+    // Far Left Info (i) Button
     var infoBtn = document.createElement('button');
     infoBtn.textContent = 'i';
     infoBtn.setAttribute('aria-label', 'About Loadbar');
@@ -236,7 +226,7 @@ export default function handler(req, res) {
       'width:15px;height:15px;border-radius:50%;border:1px solid currentColor;' +
       'background:transparent;color:currentColor;font-size:10px;font-weight:700;' +
       'font-family:serif;font-style:italic;display:inline-flex;align-items:center;' +
-      'justify-content:center;cursor:pointer;opacity:0.6;padding:0;line-height:1;margin-left:2px;flex-shrink:0;';
+      'justify-content:center;cursor:pointer;opacity:0.6;padding:0;line-height:1;margin-right:2px;flex-shrink:0;';
 
     infoBtn.addEventListener('mouseenter', function() { infoBtn.style.opacity = '1'; });
     infoBtn.addEventListener('mouseleave', function() { infoBtn.style.opacity = '0.6'; });
@@ -245,11 +235,17 @@ export default function handler(req, res) {
       popover.style.display = popover.style.display === 'none' ? 'block' : 'none';
     });
 
-    brand.appendChild(logo);
-    brand.appendChild(brandText);
-    brand.appendChild(infoBtn);
+    var brandText = document.createElement('span');
+    brandText.textContent = 'Loadbar';
+    brandText.style.cssText =
+      'font-size:11px;font-weight:700;text-transform:uppercase;' +
+      'letter-spacing:0.05em;opacity:0.6;';
 
-    // Left Popover (Quotation string escaping fix applied here)
+    // Appended on the far left (info button FIRST, then LOADBAR text)
+    brand.appendChild(infoBtn);
+    brand.appendChild(brandText);
+
+    // Left Popover Box
     popover.innerHTML =
       '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Founder-to-founder growth</div>' +
       '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup\\\'s products for free mutual traffic. No ads, no cost.</div>' +
