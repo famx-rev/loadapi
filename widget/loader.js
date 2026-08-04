@@ -213,48 +213,78 @@ export default function handler(req, res) {
     bar.appendChild(closeBtn);
 
     // --- overlap fix -----------------------------------------------------
-    // A simple margin-top on <body> only pushes normal-flow content down.
-    // It does NOT move the host site's own `position: fixed` / `sticky`
-    // header, because fixed elements are positioned against the viewport,
-    // not against body's box — so that header stays pinned at y:0 and
-    // sits underneath our bar, causing the overlap seen on the site.
+    // A margin/transform on <body> either misses `position: fixed`
+    // descendants entirely, or forces us to rewrap the whole DOM (risky:
+    // breaks host CSS selectors like `body > header` and any JS that
+    // walks body's direct children).
     //
-    // Fix: move every existing body child into a wrapper <div>, then
-    // apply a CSS transform to that wrapper. A transform on an ancestor
-    // creates a new "containing block" for any `position: fixed`
-    // descendants, so the site's fixed header (now inside the wrapper)
-    // gets pushed down along with everything else. Our own bar is kept
-    // OUTSIDE the wrapper (a direct child of body), so it stays truly
-    // fixed to the real viewport top.
-    var wrapper = document.getElementById('loadbar-page-wrapper');
-    if (!wrapper) {
-      wrapper = document.createElement('div');
-      wrapper.id = 'loadbar-page-wrapper';
-      var existing = [];
-      for (var i = 0; i < document.body.childNodes.length; i++) {
-        existing.push(document.body.childNodes[i]);
-      }
-      for (var j = 0; j < existing.length; j++) {
-        wrapper.appendChild(existing[j]);
-      }
-      document.body.insertBefore(wrapper, document.body.firstChild);
+    // Instead, directly find the host site's own fixed/sticky elements
+    // pinned at top:0 (almost always their header/nav) and nudge just
+    // their `top` down by the bar's height. Normal-flow content is
+    // pushed with body padding-top (added on top of whatever padding
+    // already exists, so we don't clobber it) plus scroll-padding-top so
+    // anchor-jump scrolling still lands below the bar.
+    var originalBodyPaddingTop = document.body.style.paddingTop || '';
+    var originalScrollPaddingTop = document.documentElement.style.scrollPaddingTop || '';
+    var basePaddingTop = parseInt(getComputedStyle(document.body).paddingTop, 10) || 0;
+
+    function shiftFixedElement(el, h) {
+      try {
+        if (!el || el.nodeType !== 1) return;
+        if (el === root || root.contains(el)) return;
+        if (el.dataset && el.dataset.loadbarShifted === '1') return;
+        var cs = getComputedStyle(el);
+        if (cs.position !== 'fixed' && cs.position !== 'sticky') return;
+        var topRaw = cs.top;
+        if (!topRaw || topRaw === 'auto' || !/px$/.test(topRaw)) return;
+        var originalPx = parseFloat(topRaw);
+        if (isNaN(originalPx) || originalPx !== 0) return;
+        el.dataset.loadbarOriginalTop = el.style.top || '';
+        el.style.setProperty('top', h + 'px', 'important');
+        el.dataset.loadbarShifted = '1';
+      } catch (e) {}
+    }
+
+    function unshiftFixedElements() {
+      try {
+        var nodes = document.querySelectorAll('[data-loadbar-shifted="1"]');
+        for (var i = 0; i < nodes.length; i++) {
+          var el = nodes[i];
+          try {
+            el.style.top = el.dataset.loadbarOriginalTop || '';
+            delete el.dataset.loadbarOriginalTop;
+            delete el.dataset.loadbarShifted;
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
+
+    function sweepFixedElements(h) {
+      try {
+        var nodes = document.querySelectorAll('*');
+        for (var i = 0; i < nodes.length; i++) shiftFixedElement(nodes[i], h);
+      } catch (e) {}
+    }
+
+    function pushPageDown() {
+      var h = bar.getBoundingClientRect().height || 44;
+      document.body.style.setProperty('padding-top', (basePaddingTop + h) + 'px', 'important');
+      document.documentElement.style.setProperty('scroll-padding-top', h + 'px', 'important');
+      sweepFixedElements(h);
+      return h;
+    }
+
+    function restoreLayout() {
+      document.body.style.setProperty('padding-top', originalBodyPaddingTop || '0px');
+      document.documentElement.style.setProperty(
+        'scroll-padding-top',
+        originalScrollPaddingTop || '0px'
+      );
+      unshiftFixedElements();
     }
 
     root.appendChild(bar);
     document.body.appendChild(root);
-
-    function pushPageDown() {
-      var h = bar.getBoundingClientRect().height || 44;
-      wrapper.style.setProperty('transform', 'translateY(' + h + 'px)', 'important');
-      // Reclaim the blank strip the transform leaves at the bottom of
-      // the page so total scroll height stays correct.
-      wrapper.style.setProperty('margin-bottom', '-' + h + 'px', 'important');
-    }
-
-    function restoreLayout() {
-      wrapper.style.removeProperty('transform');
-      wrapper.style.removeProperty('margin-bottom');
-    }
 
     pushPageDown();
 
@@ -263,9 +293,19 @@ export default function handler(req, res) {
       referrer: window.location.hostname,
     });
 
-    // Re-measure on resize in case the bar's height changes (e.g. text
-    // wraps on narrower viewports), so the page never overlaps it.
+    // Re-sweep when the bar's own height changes, and when the host page
+    // renders new fixed/sticky elements later (common on SPAs where the
+    // header mounts after our script runs).
     window.addEventListener('resize', pushPageDown);
+    try {
+      var resweep = function () {
+        var h = bar.getBoundingClientRect().height || 44;
+        sweepFixedElements(h);
+      };
+      var mo = new MutationObserver(resweep);
+      mo.observe(document.body, { childList: true, subtree: true });
+      window.addEventListener('load', resweep);
+    } catch (e) {}
   }
 })();`;
 
