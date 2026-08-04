@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader
+ * Loadbar widget loader v1.3
  * Self-contained, no dependencies. Loads asynchronously.
  *
  * Usage:
