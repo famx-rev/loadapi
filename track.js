@@ -1,12 +1,10 @@
 import pool from './db.js';
-import { applyCors, json, errorResponse, readBody } from './_helpers.js';
+import { json, errorResponse } from './_helpers.js';
 
 export default async function handler(req, res) {
-  applyCors(res);
-  if (req.method === 'OPTIONS') return res.end();
   if (req.method !== 'POST') return errorResponse(res, 'Method not allowed', 405);
 
-  const body = await readBody(req);
+  const body = req.body;
   if (!body) return errorResponse(res, 'Invalid request body', 400);
 
   const startupId = typeof body.startup_id === 'string' ? body.startup_id : '';

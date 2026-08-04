@@ -1,9 +1,7 @@
 import pool from './db.js';
-import { applyCors, json, errorResponse } from './_helpers.js';
+import { json, errorResponse } from './_helpers.js';
 
 export default async function handler(req, res) {
-  applyCors(res);
-  if (req.method === 'OPTIONS') return res.end();
   if (req.method !== 'GET') return errorResponse(res, 'Method not allowed', 405);
 
   const limit = Math.min(parseInt(req.query.limit || '20', 10) || 20, 100);

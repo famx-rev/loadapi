@@ -1,9 +1,7 @@
 import pool from './db.js';
-import { applyCors, json, errorResponse, requireUser } from './_helpers.js';
+import { json, errorResponse, requireUser } from './_helpers.js';
 
 export default async function handler(req, res) {
-  applyCors(res);
-  if (req.method === 'OPTIONS') return res.end();
   if (req.method !== 'GET') return errorResponse(res, 'Method not allowed', 405);
 
   const userId = await requireUser(req, res);
@@ -19,4 +17,3 @@ export default async function handler(req, res) {
     return errorResponse(res, 'Could not load startups', 500);
   }
 }
-

@@ -1,22 +1,12 @@
 import { randomUUID } from 'crypto';
 import pool from './db.js';
-import { applyCors, json, errorResponse, requireUser, validateProfile, readBody } from './_helpers.js';
+import { json, errorResponse, requireUser, validateProfile } from './_helpers.js';
 
-export default async function handler(req, res) {
-  applyCors(res);
-  if (req.method === 'OPTIONS') return res.end();
-
-  if (req.method === 'POST') return createStartup(req, res);
-  if (req.method === 'PUT') return updateStartup(req, res);
-  if (req.method === 'DELETE') return deleteStartup(req, res);
-  return errorResponse(res, 'Method not allowed', 405);
-}
-
-async function createStartup(req, res) {
+export async function create(req, res) {
   const userId = await requireUser(req, res);
   if (!userId) return;
 
-  const body = await readBody(req);
+  const body = req.body;
   if (!body) return errorResponse(res, 'Invalid request body', 400);
 
   const result = validateProfile(body);
@@ -41,11 +31,24 @@ async function createStartup(req, res) {
   }
 }
 
-async function updateStartup(req, res) {
+export async function getOne(req, res) {
+  const startupId = req.params.id;
+  if (!startupId) return errorResponse(res, 'Missing startup id', 400);
+
+  try {
+    const [rows] = await pool.execute('SELECT * FROM startups WHERE id = ?', [startupId]);
+    if (rows.length === 0) return errorResponse(res, 'Startup not found', 404);
+    return json(res, { startup: rows[0] });
+  } catch {
+    return errorResponse(res, 'Could not load startup', 500);
+  }
+}
+
+export async function update(req, res) {
   const userId = await requireUser(req, res);
   if (!userId) return;
 
-  const startupId = req.query.id;
+  const startupId = req.params.id;
   if (!startupId) return errorResponse(res, 'Missing startup id', 400);
 
   const [existing] = await pool.execute(
@@ -55,7 +58,7 @@ async function updateStartup(req, res) {
   if (existing.length === 0) return errorResponse(res, 'Startup not found', 404);
   if (existing[0].owner_id !== userId) return errorResponse(res, 'Not authorized', 403);
 
-  const body = await readBody(req);
+  const body = req.body;
   if (!body) return errorResponse(res, 'Invalid request body', 400);
 
   const result = validateProfile(body);
@@ -77,11 +80,11 @@ async function updateStartup(req, res) {
   }
 }
 
-async function deleteStartup(req, res) {
+export async function deleteStartup(req, res) {
   const userId = await requireUser(req, res);
   if (!userId) return;
 
-  const startupId = req.query.id;
+  const startupId = req.params.id;
   if (!startupId) return errorResponse(res, 'Missing startup id', 400);
 
   const [existing] = await pool.execute(
@@ -98,3 +101,5 @@ async function deleteStartup(req, res) {
     return errorResponse(res, 'Could not delete startup', 500);
   }
 }
+
+export default { create, getOne, update, delete: deleteStartup };

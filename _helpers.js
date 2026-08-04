@@ -1,30 +1,16 @@
 const AUTH_BASE =
   'https://api-eight-navy-68.vercel.app/api/authx/cb705c5d-4e34-491d-91c0-e795d7b7da10/user';
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
-};
-
-export function applyCors(res) {
-  for (const [k, v] of Object.entries(CORS_HEADERS)) {
-    res.setHeader(k, v);
-  }
-}
-
 export function json(res, body, status = 200) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  return res.end(JSON.stringify(body));
+  return res.status(status).json(body);
 }
 
 export function errorResponse(res, message, status) {
-  return json(res, { error: message }, status);
+  return res.status(status).json({ error: message });
 }
 
 export function getAuthHeader(req) {
-  const auth = req.headers['authorization'] || req.headers['Authorization'];
+  const auth = req.headers.authorization;
   if (!auth) return null;
   return auth.replace(/^Bearer\s+/i, '').trim() || null;
 }
@@ -83,12 +69,4 @@ export function validateProfile(body) {
   const accent_to = typeof body.accent_to === 'string' ? body.accent_to : '#0b9a6c';
 
   return { data: { name, domain, tagline, url, accent_from, accent_to } };
-}
-
-export async function readBody(req) {
-  try {
-    return await req.json();
-  } catch {
-    return null;
-  }
 }
