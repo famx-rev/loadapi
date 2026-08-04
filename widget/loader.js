@@ -6,18 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader
- * Self-contained, no dependencies. Loads asynchronously.
- *
- * Usage:
- *   <script
- *     src="https://loadapi.vercel.app/api/widget/loader.js"
- *     data-startup-id="YOUR_ID"
- *   ></script>
- *
- * The script reads data-startup-id from its own <script> tag,
- * fetches the startup profile + a promoted startup, injects the bar,
- * and tracks impressions + clicks.
+ * Loadbar widget loader v1.5
  */
 (function () {
   'use strict';
@@ -35,8 +24,8 @@ export default function handler(req, res) {
     return;
   }
 
-  // Use new Vercel API URL
   var apiBase = 'https://loadapi.vercel.app';
+  var BAR_HEIGHT = 44;
 
   function gradient(s) {
     var from = (s && s.accent_from) || '#3dd79e';
@@ -83,8 +72,58 @@ export default function handler(req, res) {
       console.warn('[Loadbar] Could not load bar:', e.message || e);
     });
 
+  function shiftFixedElement(el, root) {
+    try {
+      if (!el || el.nodeType !== 1) return;
+      if (el === root || (root && root.contains && root.contains(el))) return;
+      if (el.dataset && el.dataset.loadbarShifted === '1') return;
+
+      var cs = window.getComputedStyle(el);
+      if (cs.position !== 'fixed' && cs.position !== 'sticky') return;
+
+      var topRaw = cs.top;
+      if (!topRaw || topRaw === 'auto') return;
+      if (!/px$/.test(topRaw)) return;
+
+      var originalPx = parseFloat(topRaw);
+      if (isNaN(originalPx)) return;
+
+      // Store original inline top style
+      el.dataset.loadbarOriginalTop = el.style.top || '';
+      el.style.top = (originalPx + BAR_HEIGHT) + 'px';
+      el.dataset.loadbarShifted = '1';
+    } catch (e) {}
+  }
+
+  function sweepFixedElements(root) {
+    try {
+      var nodes = document.querySelectorAll('*');
+      for (var i = 0; i < nodes.length; i++) {
+        shiftFixedElement(nodes[i], root);
+      }
+    } catch (e) {}
+  }
+
+  function unshiftFixedElements() {
+    try {
+      var nodes = document.querySelectorAll('[data-loadbar-shifted="1"]');
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        el.style.top = el.dataset.loadbarOriginalTop || '';
+        delete el.dataset.loadbarOriginalTop;
+        delete el.dataset.loadbarShifted;
+      }
+    } catch (e) {}
+  }
+
   function renderBar(startup, promotion) {
     if (document.getElementById('loadbar-root')) return;
+
+    var html = document.documentElement;
+    var body = document.body;
+
+    var originalBodyPaddingTop = body ? body.style.paddingTop || '' : '';
+    var originalScrollPaddingTop = html ? html.style.scrollPaddingTop || '' : '';
 
     var root = document.createElement('div');
     root.id = 'loadbar-root';
@@ -95,7 +134,7 @@ export default function handler(req, res) {
 
     var bar = document.createElement('div');
     bar.style.cssText =
-      'display:flex;align-items:center;gap:10px;height:44px;width:100%;' +
+      'display:flex;align-items:center;gap:10px;height:' + BAR_HEIGHT + 'px;width:100%;' +
       'padding:0 14px;background:rgba(255,255,255,0.92);' +
       'backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);' +
       'border-bottom:1px solid rgba(0,0,0,0.08);box-sizing:border-box;';
@@ -202,7 +241,10 @@ export default function handler(req, res) {
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
       'color:#9ca3af;cursor:pointer;padding:0 4px;line-height:1;';
     closeBtn.addEventListener('click', function () {
-      root.style.display = 'none';
+      root.remove();
+      if (body) body.style.paddingTop = originalBodyPaddingTop;
+      if (html) html.style.scrollPaddingTop = originalScrollPaddingTop;
+      unshiftFixedElements();
     });
 
     bar.appendChild(brand);
@@ -212,9 +254,21 @@ export default function handler(req, res) {
     bar.appendChild(closeBtn);
 
     root.appendChild(bar);
-    document.body.appendChild(root);
+    body.appendChild(root);
 
-    document.body.style.marginTop = '44px';
+    // Apply layout adjustments
+    if (body) {
+      var existingPad = parseInt(window.getComputedStyle(body).paddingTop) || 0;
+      body.style.paddingTop = (existingPad + BAR_HEIGHT) + 'px';
+    }
+    if (html) {
+      html.style.scrollPaddingTop = BAR_HEIGHT + 'px';
+    }
+
+    // Shift fixed/sticky headers and run re-sweeps for dynamic layouts
+    sweepFixedElements(root);
+    setTimeout(function () { sweepFixedElements(root); }, 250);
+    setTimeout(function () { sweepFixedElements(root); }, 800);
 
     track('impression', {
       device: detectDevice(),
@@ -226,6 +280,6 @@ export default function handler(req, res) {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=300');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  
+
   res.send(script);
 }
