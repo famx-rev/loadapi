@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader v1.2
+ * Loadbar widget loader
  * Self-contained, no dependencies. Loads asynchronously.
  *
  * Usage:
@@ -212,17 +212,49 @@ export default function handler(req, res) {
     if (promoWrap) bar.appendChild(promoWrap);
     bar.appendChild(closeBtn);
 
+    // --- overlap fix -----------------------------------------------------
+    // A simple margin-top on <body> only pushes normal-flow content down.
+    // It does NOT move the host site's own `position: fixed` / `sticky`
+    // header, because fixed elements are positioned against the viewport,
+    // not against body's box — so that header stays pinned at y:0 and
+    // sits underneath our bar, causing the overlap seen on the site.
+    //
+    // Fix: move every existing body child into a wrapper <div>, then
+    // apply a CSS transform to that wrapper. A transform on an ancestor
+    // creates a new "containing block" for any `position: fixed`
+    // descendants, so the site's fixed header (now inside the wrapper)
+    // gets pushed down along with everything else. Our own bar is kept
+    // OUTSIDE the wrapper (a direct child of body), so it stays truly
+    // fixed to the real viewport top.
+    var wrapper = document.getElementById('loadbar-page-wrapper');
+    if (!wrapper) {
+      wrapper = document.createElement('div');
+      wrapper.id = 'loadbar-page-wrapper';
+      var existing = [];
+      for (var i = 0; i < document.body.childNodes.length; i++) {
+        existing.push(document.body.childNodes[i]);
+      }
+      for (var j = 0; j < existing.length; j++) {
+        wrapper.appendChild(existing[j]);
+      }
+      document.body.insertBefore(wrapper, document.body.firstChild);
+    }
+
     root.appendChild(bar);
     document.body.appendChild(root);
 
-    // --- overlap fix helpers -------------------------------------------
-    // Instead of a hardcoded 44px margin (which gets clobbered by the
-    // host site's own CSS resets / !important rules, or is wrong if the
-    // bar wraps to a different height), measure the real rendered bar
-    // height and force the push-down with !important so nothing on the
-    // host page can sit underneath it.
-    var origBodyMarginTop = document.body.style.marginTop;
-    var origHtmlScrollPaddingTop = document.documentElement.style.scrollPaddingTop;
+    function pushPageDown() {
+      var h = bar.getBoundingClientRect().height || 44;
+      wrapper.style.setProperty('transform', 'translateY(' + h + 'px)', 'important');
+      // Reclaim the blank strip the transform leaves at the bottom of
+      // the page so total scroll height stays correct.
+      wrapper.style.setProperty('margin-bottom', '-' + h + 'px', 'important');
+    }
+
+    function restoreLayout() {
+      wrapper.style.removeProperty('transform');
+      wrapper.style.removeProperty('margin-bottom');
+    }
 
     pushPageDown();
 
@@ -230,20 +262,6 @@ export default function handler(req, res) {
       device: detectDevice(),
       referrer: window.location.hostname,
     });
-
-    function pushPageDown() {
-      var h = bar.getBoundingClientRect().height || 44;
-      document.body.style.setProperty('margin-top', h + 'px', 'important');
-      document.documentElement.style.setProperty('scroll-padding-top', h + 'px', 'important');
-    }
-
-    function restoreLayout() {
-      document.body.style.setProperty('margin-top', origBodyMarginTop || '0px');
-      document.documentElement.style.setProperty(
-        'scroll-padding-top',
-        origHtmlScrollPaddingTop || '0px'
-      );
-    }
 
     // Re-measure on resize in case the bar's height changes (e.g. text
     // wraps on narrower viewports), so the page never overlaps it.
