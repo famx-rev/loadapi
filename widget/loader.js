@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader v1.5
+ * Loadbar widget loader
  */
 (function () {
   'use strict';
@@ -65,8 +65,12 @@ export default function handler(req, res) {
       return r.json();
     })
     .then(function (data) {
-      if (!data || !data.startup) return;
-      renderBar(data.startup, data.promotion);
+      if (!data) return;
+      // Show ONLY the promotion. Fallback to startup if no promotion is available.
+      var promoToShow = data.promotion || data.startup;
+      if (!promoToShow) return;
+      
+      renderBar(promoToShow);
     })
     .catch(function (e) {
       console.warn('[Loadbar] Could not load bar:', e.message || e);
@@ -88,7 +92,6 @@ export default function handler(req, res) {
       var originalPx = parseFloat(topRaw);
       if (isNaN(originalPx)) return;
 
-      // Store original inline top style
       el.dataset.loadbarOriginalTop = el.style.top || '';
       el.style.top = (originalPx + BAR_HEIGHT) + 'px';
       el.dataset.loadbarShifted = '1';
@@ -116,7 +119,7 @@ export default function handler(req, res) {
     } catch (e) {}
   }
 
-  function renderBar(startup, promotion) {
+  function renderBar(promotion) {
     if (document.getElementById('loadbar-root')) return;
 
     var html = document.documentElement;
@@ -139,12 +142,13 @@ export default function handler(req, res) {
       'backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);' +
       'border-bottom:1px solid rgba(0,0,0,0.08);box-sizing:border-box;';
 
+    // Brand Logo/Label
     var brand = document.createElement('div');
     brand.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
     var logo = document.createElement('span');
     logo.style.cssText =
       'width:14px;height:14px;border-radius:3px;display:inline-block;' +
-      'background:' + gradient(startup) + ';';
+      'background:' + gradient(promotion) + ';';
     var brandText = document.createElement('span');
     brandText.textContent = 'Loadbar';
     brandText.style.cssText =
@@ -156,24 +160,25 @@ export default function handler(req, res) {
     var divider = document.createElement('span');
     divider.style.cssText = 'width:1px;height:14px;background:rgba(0,0,0,0.1);flex-shrink:0;';
 
+    // Promoted Startup Content
     var profile = document.createElement('div');
     profile.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1;';
 
     var avatar = document.createElement('span');
-    avatar.textContent = (startup.name || '?')[0].toUpperCase();
+    avatar.textContent = (promotion.name || '?')[0].toUpperCase();
     avatar.style.cssText =
       'width:22px;height:22px;border-radius:5px;display:flex;align-items:center;' +
       'justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;' +
-      'background:' + gradient(startup) + ';';
+      'background:' + gradient(promotion) + ';';
 
     var profileText = document.createElement('p');
     profileText.style.cssText =
       'margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#4b5563;';
     var profileName = document.createElement('span');
-    profileName.textContent = startup.name || '';
+    profileName.textContent = promotion.name || '';
     profileName.style.cssText = 'font-weight:600;color:#111827;';
     var profileTag = document.createElement('span');
-    profileTag.textContent = ' — ' + (startup.tagline || '');
+    profileTag.textContent = promotion.tagline ? ' — ' + promotion.tagline : '';
     profileTag.style.cssText = 'color:#9ca3af;';
     profileText.appendChild(profileName);
     profileText.appendChild(profileTag);
@@ -181,59 +186,32 @@ export default function handler(req, res) {
     profile.appendChild(avatar);
     profile.appendChild(profileText);
 
-    var promoWrap = null;
-    if (promotion) {
-      promoWrap = document.createElement('div');
-      promoWrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
-
-      var promoBadge = document.createElement('span');
-      promoBadge.textContent = 'AD';
-      promoBadge.style.cssText =
-        'font-size:9px;font-weight:700;color:#9ca3af;padding:1px 4px;' +
-        'border-radius:3px;background:rgba(0,0,0,0.05);';
-
-      var promoAvatar = document.createElement('span');
-      promoAvatar.textContent = (promotion.name || '?')[0].toUpperCase();
-      promoAvatar.style.cssText =
-        'width:20px;height:20px;border-radius:5px;display:flex;align-items:center;' +
-        'justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0;' +
-        'background:' + gradient(promotion) + ';';
-
-      var promoText = document.createElement('span');
-      promoText.textContent = promotion.name + ' — ' + (promotion.tagline || '');
-      promoText.style.cssText =
-        'max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
-        'color:#4b5563;font-size:12px;';
-
-      var promoVisit = document.createElement('a');
-      promoVisit.href = promotion.url || '#';
-      promoVisit.target = '_blank';
-      promoVisit.rel = 'noopener noreferrer';
-      promoVisit.textContent = 'Visit';
-      promoVisit.style.cssText =
-        'display:inline-flex;align-items:center;gap:4px;flex-shrink:0;' +
-        'padding:4px 12px;border-radius:999px;font-size:11px;font-weight:500;' +
-        'text-decoration:none;color:#111827;background:rgba(0,0,0,0.05);' +
-        'transition:background 0.15s ease;cursor:pointer;';
-      promoVisit.addEventListener('mouseenter', function () {
-        promoVisit.style.background = 'rgba(0,0,0,0.1)';
+    // "Visit" Action Link
+    var visitBtn = document.createElement('a');
+    visitBtn.href = promotion.url || '#';
+    visitBtn.target = '_blank';
+    visitBtn.rel = 'noopener noreferrer';
+    visitBtn.textContent = 'Visit →';
+    visitBtn.style.cssText =
+      'display:inline-flex;align-items:center;gap:4px;flex-shrink:0;' +
+      'padding:4px 12px;border-radius:999px;font-size:11px;font-weight:500;' +
+      'text-decoration:none;color:#111827;background:rgba(0,0,0,0.05);' +
+      'transition:background 0.15s ease;cursor:pointer;margin-right:4px;';
+    visitBtn.addEventListener('mouseenter', function () {
+      visitBtn.style.background = 'rgba(0,0,0,0.1)';
+    });
+    visitBtn.addEventListener('mouseleave', function () {
+      visitBtn.style.background = 'rgba(0,0,0,0.05)';
+    });
+    visitBtn.addEventListener('click', function () {
+      track('click', {
+        device: detectDevice(),
+        referrer: window.location.hostname,
+        promoted_id: promotion.id,
       });
-      promoVisit.addEventListener('mouseleave', function () {
-        promoVisit.style.background = 'rgba(0,0,0,0.05)';
-      });
-      promoVisit.addEventListener('click', function () {
-        track('click', {
-          device: detectDevice(),
-          referrer: window.location.hostname,
-        });
-      });
+    });
 
-      promoWrap.appendChild(promoBadge);
-      promoWrap.appendChild(promoAvatar);
-      promoWrap.appendChild(promoText);
-      promoWrap.appendChild(promoVisit);
-    }
-
+    // Close Button
     var closeBtn = document.createElement('button');
     closeBtn.textContent = '\\u00d7';
     closeBtn.setAttribute('aria-label', 'Close bar');
@@ -250,13 +228,13 @@ export default function handler(req, res) {
     bar.appendChild(brand);
     bar.appendChild(divider);
     bar.appendChild(profile);
-    if (promoWrap) bar.appendChild(promoWrap);
+    bar.appendChild(visitBtn);
     bar.appendChild(closeBtn);
 
     root.appendChild(bar);
     body.appendChild(root);
 
-    // Apply layout adjustments
+    // Adjust Page Offset
     if (body) {
       var existingPad = parseInt(window.getComputedStyle(body).paddingTop) || 0;
       body.style.paddingTop = (existingPad + BAR_HEIGHT) + 'px';
@@ -265,7 +243,7 @@ export default function handler(req, res) {
       html.style.scrollPaddingTop = BAR_HEIGHT + 'px';
     }
 
-    // Shift fixed/sticky headers and run re-sweeps for dynamic layouts
+    // Adjust Fixed/Sticky Navigation Elements
     sweepFixedElements(root);
     setTimeout(function () { sweepFixedElements(root); }, 250);
     setTimeout(function () { sweepFixedElements(root); }, 800);
@@ -273,6 +251,7 @@ export default function handler(req, res) {
     track('impression', {
       device: detectDevice(),
       referrer: window.location.hostname,
+      promoted_id: promotion.id,
     });
   }
 })();`;
