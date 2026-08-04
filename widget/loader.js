@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader - Left-aligned info button for Loadbar platform growth
+ * Loadbar widget loader - Fixed Unescaped String Quotes Syntax Error
  */
 (function () {
   'use strict';
@@ -228,7 +228,7 @@ export default function handler(req, res) {
       'font-size:11px;font-weight:700;text-transform:uppercase;' +
       'letter-spacing:0.05em;opacity:0.6;';
 
-    // Info (i) Button placed on the LEFT side right after "Loadbar"
+    // Left Info (i) Button
     var infoBtn = document.createElement('button');
     infoBtn.textContent = 'i';
     infoBtn.setAttribute('aria-label', 'About Loadbar');
@@ -247,13 +247,13 @@ export default function handler(req, res) {
 
     brand.appendChild(logo);
     brand.appendChild(brandText);
-    brand.appendChild(infoBtn); // On the left side!
+    brand.appendChild(infoBtn);
 
-    // Left-aligned Popover Box
+    // Left Popover (Quotation string escaping fix applied here)
     popover.innerHTML =
       '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Founder-to-founder growth</div>' +
-      '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network — founders who display each other\'s startups for free mutual traffic. No ads, no cost.</div>' +
-      '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free →</a>';
+      '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup\\\'s products for free mutual traffic. No ads, no cost.</div>' +
+      '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free &rarr;</a>';
 
     document.addEventListener('click', function(e) {
       if (popover.style.display === 'block' && !popover.contains(e.target) && e.target !== infoBtn) {
@@ -264,7 +264,7 @@ export default function handler(req, res) {
     var divider = document.createElement('span');
     divider.style.cssText = 'width:1px;height:14px;background:currentColor;opacity:0.15;flex-shrink:0;';
 
-    // Center Content (Promoted Startup Profile)
+    // Center Content
     var profile = document.createElement('div');
     profile.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1;';
 
