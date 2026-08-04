@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "functions": {
+    "*.js": {
+      "runtime": "@vercel/node"
+    },
+    "widget/*.js": {
+      "runtime": "@vercel/node"
+    }
+  },
+  "routes": [
+    { "src": "/widget/loader.js", "dest": "/widget/loader.js" }
+  ]
+}
