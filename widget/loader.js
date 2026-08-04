@@ -240,6 +240,15 @@ export default function handler(req, res) {
 
     bar.addEventListener('click', handlePromoVisit);
 
+    // Hover / Impression Tracker (Fires every time the mouse enters the bar)
+    bar.addEventListener('mouseenter', function () {
+      track('impression', {
+        device: detectDevice(),
+        referrer: window.location.hostname,
+        promoted_id: promoId,
+      });
+    });
+
     // Left Brand Area
     var brand = document.createElement('div');
     brand.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
@@ -430,13 +439,6 @@ export default function handler(req, res) {
     window.addEventListener('hashchange', handleRoute);
 
     sweepFixedElements(root);
-
-    // Trigger Impression Track with Promo ID Resolution
-    track('impression', {
-      device: detectDevice(),
-      referrer: window.location.hostname,
-      promoted_id: promoId,
-    });
   }
 })();`;
 
