@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader
+ * Loadbar widget loader with Auto Dark/Light theme detection
  */
 (function () {
   'use strict';
@@ -26,6 +26,37 @@ export default function handler(req, res) {
 
   var apiBase = 'https://loadapi.vercel.app';
   var BAR_HEIGHT = 44;
+
+  function detectTheme() {
+    var dataTheme = thisScript.getAttribute('data-theme');
+    if (dataTheme === 'dark' || dataTheme === 'light') return dataTheme;
+
+    var roots = [document.documentElement, document.body];
+    for (var i = 0; i < roots.length; i++) {
+      var el = roots[i];
+      if (!el) continue;
+      var attrs = ['data-theme', 'data-color-scheme', 'data-mode', 'color-scheme'];
+      for (var j = 0; j < attrs.length; j++) {
+        var val = el.getAttribute(attrs[j]);
+        if (val && val.toLowerCase().indexOf('dark') !== -1) return 'dark';
+        if (val && val.toLowerCase().indexOf('light') !== -1) return 'light';
+      }
+      if (el.classList && el.classList.contains('dark')) return 'dark';
+      if (el.classList && el.classList.contains('light')) return 'light';
+    }
+
+    try {
+      var bg = window.getComputedStyle(document.body).backgroundColor;
+      var rgb = bg.match(/\\d+/g);
+      if (rgb && rgb.length >= 3) {
+        var luminance = (0.299 * parseInt(rgb[0]) + 0.587 * parseInt(rgb[1]) + 0.114 * parseInt(rgb[2])) / 255;
+        if (luminance < 0.5) return 'dark';
+        if (luminance > 0.5) return 'light';
+      }
+    } catch (e) {}
+
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
 
   function gradient(s) {
     var from = (s && s.accent_from) || '#3dd79e';
@@ -66,7 +97,6 @@ export default function handler(req, res) {
     })
     .then(function (data) {
       if (!data) return;
-      // Show ONLY the promotion. Fallback to startup if no promotion is available.
       var promoToShow = data.promotion || data.startup;
       if (!promoToShow) return;
       
@@ -122,6 +152,7 @@ export default function handler(req, res) {
   function renderBar(promotion) {
     if (document.getElementById('loadbar-root')) return;
 
+    var currentTheme = detectTheme();
     var html = document.documentElement;
     var body = document.body;
 
@@ -136,11 +167,18 @@ export default function handler(req, res) {
       'font-size:13px;line-height:1.4;';
 
     var bar = document.createElement('div');
-    bar.style.cssText =
-      'display:flex;align-items:center;gap:10px;height:' + BAR_HEIGHT + 'px;width:100%;' +
-      'padding:0 14px;background:rgba(255,255,255,0.92);' +
-      'backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);' +
-      'border-bottom:1px solid rgba(0,0,0,0.08);box-sizing:border-box;';
+
+    function applyThemeStyles(isDark) {
+      bar.style.cssText =
+        'display:flex;align-items:center;gap:10px;height:' + BAR_HEIGHT + 'px;width:100%;' +
+        'padding:0 14px;box-sizing:border-box;' +
+        'backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);' +
+        (isDark
+          ? 'background:rgba(24,24,27,0.92);border-bottom:1px solid rgba(255,255,255,0.1);color:#f3f4f6;'
+          : 'background:rgba(255,255,255,0.92);border-bottom:1px solid rgba(0,0,0,0.08);color:#111827;');
+    }
+
+    applyThemeStyles(currentTheme === 'dark');
 
     // Brand Logo/Label
     var brand = document.createElement('div');
@@ -153,12 +191,12 @@ export default function handler(req, res) {
     brandText.textContent = 'Loadbar';
     brandText.style.cssText =
       'font-size:11px;font-weight:700;text-transform:uppercase;' +
-      'letter-spacing:0.05em;color:#6b7280;';
+      'letter-spacing:0.05em;opacity:0.6;';
     brand.appendChild(logo);
     brand.appendChild(brandText);
 
     var divider = document.createElement('span');
-    divider.style.cssText = 'width:1px;height:14px;background:rgba(0,0,0,0.1);flex-shrink:0;';
+    divider.style.cssText = 'width:1px;height:14px;background:currentColor;opacity:0.15;flex-shrink:0;';
 
     // Promoted Startup Content
     var profile = document.createElement('div');
@@ -173,13 +211,13 @@ export default function handler(req, res) {
 
     var profileText = document.createElement('p');
     profileText.style.cssText =
-      'margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#4b5563;';
+      'margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     var profileName = document.createElement('span');
     profileName.textContent = promotion.name || '';
-    profileName.style.cssText = 'font-weight:600;color:#111827;';
+    profileName.style.cssText = 'font-weight:600;';
     var profileTag = document.createElement('span');
     profileTag.textContent = promotion.tagline ? ' — ' + promotion.tagline : '';
-    profileTag.style.cssText = 'color:#9ca3af;';
+    profileTag.style.cssText = 'opacity:0.6;';
     profileText.appendChild(profileName);
     profileText.appendChild(profileTag);
 
@@ -195,13 +233,13 @@ export default function handler(req, res) {
     visitBtn.style.cssText =
       'display:inline-flex;align-items:center;gap:4px;flex-shrink:0;' +
       'padding:4px 12px;border-radius:999px;font-size:11px;font-weight:500;' +
-      'text-decoration:none;color:#111827;background:rgba(0,0,0,0.05);' +
+      'text-decoration:none;color:currentColor;background:rgba(125,125,125,0.12);' +
       'transition:background 0.15s ease;cursor:pointer;margin-right:4px;';
     visitBtn.addEventListener('mouseenter', function () {
-      visitBtn.style.background = 'rgba(0,0,0,0.1)';
+      visitBtn.style.background = 'rgba(125,125,125,0.22)';
     });
     visitBtn.addEventListener('mouseleave', function () {
-      visitBtn.style.background = 'rgba(0,0,0,0.05)';
+      visitBtn.style.background = 'rgba(125,125,125,0.12)';
     });
     visitBtn.addEventListener('click', function () {
       track('click', {
@@ -217,7 +255,7 @@ export default function handler(req, res) {
     closeBtn.setAttribute('aria-label', 'Close bar');
     closeBtn.style.cssText =
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
-      'color:#9ca3af;cursor:pointer;padding:0 4px;line-height:1;';
+      'color:currentColor;opacity:0.6;cursor:pointer;padding:0 4px;line-height:1;';
     closeBtn.addEventListener('click', function () {
       root.remove();
       if (body) body.style.paddingTop = originalBodyPaddingTop;
@@ -242,6 +280,20 @@ export default function handler(req, res) {
     if (html) {
       html.style.scrollPaddingTop = BAR_HEIGHT + 'px';
     }
+
+    // Dynamic Theme Observer for On-the-Fly Website Theme Switches
+    try {
+      var observer = new MutationObserver(function () {
+        var newTheme = detectTheme();
+        if (newTheme !== currentTheme) {
+          currentTheme = newTheme;
+          applyThemeStyles(newTheme === 'dark');
+        }
+      });
+      var opts = { attributes: true, attributeFilter: ['class', 'data-theme', 'data-color-scheme', 'data-mode', 'color-scheme'] };
+      if (html) observer.observe(html, opts);
+      if (body) observer.observe(body, opts);
+    } catch (e) {}
 
     // Adjust Fixed/Sticky Navigation Elements
     sweepFixedElements(root);
