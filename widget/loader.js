@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader with Transparent Favicon Backgrounds in Dark Mode
+ * Loadbar widget loader - Left-aligned info button for Loadbar platform growth
  */
 (function () {
   'use strict';
@@ -186,6 +186,7 @@ export default function handler(req, res) {
       'font-size:13px;line-height:1.4;';
 
     var bar = document.createElement('div');
+    var popover = document.createElement('div');
     var avatarContainer = document.createElement('span');
 
     function applyThemeStyles(isDark) {
@@ -197,31 +198,73 @@ export default function handler(req, res) {
           ? 'background:rgba(24,24,27,0.92);border-bottom:1px solid rgba(255,255,255,0.1);color:#f3f4f6;'
           : 'background:rgba(255,255,255,0.92);border-bottom:1px solid rgba(0,0,0,0.08);color:#111827;');
 
-      // Force completely transparent background for avatar image container in dark mode
       if (avatarContainer) {
         avatarContainer.style.background = isDark ? 'transparent' : gradient(promotion);
       }
+
+      if (popover) {
+        popover.style.cssText =
+          'display:none;position:absolute;top:48px;left:14px;width:280px;padding:12px;border-radius:8px;' +
+          'box-shadow:0 10px 25px -5px rgba(0,0,0,0.15),0 8px 10px -6px rgba(0,0,0,0.1);z-index:2147483647;' +
+          'font-size:12px;line-height:1.5;' +
+          (isDark
+            ? 'background:#18181b;color:#e4e4e7;border:1px solid rgba(255,255,255,0.15);'
+            : 'background:#ffffff;color:#374151;border:1px solid rgba(0,0,0,0.1);');
+      }
     }
 
-    // Brand Logo/Label
+    // Left Brand Area
     var brand = document.createElement('div');
     brand.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
+
     var logo = document.createElement('span');
     logo.style.cssText =
       'width:14px;height:14px;border-radius:3px;display:inline-block;' +
       'background:' + gradient(promotion) + ';';
+
     var brandText = document.createElement('span');
     brandText.textContent = 'Loadbar';
     brandText.style.cssText =
       'font-size:11px;font-weight:700;text-transform:uppercase;' +
       'letter-spacing:0.05em;opacity:0.6;';
+
+    // Info (i) Button placed on the LEFT side right after "Loadbar"
+    var infoBtn = document.createElement('button');
+    infoBtn.textContent = 'i';
+    infoBtn.setAttribute('aria-label', 'About Loadbar');
+    infoBtn.style.cssText =
+      'width:15px;height:15px;border-radius:50%;border:1px solid currentColor;' +
+      'background:transparent;color:currentColor;font-size:10px;font-weight:700;' +
+      'font-family:serif;font-style:italic;display:inline-flex;align-items:center;' +
+      'justify-content:center;cursor:pointer;opacity:0.6;padding:0;line-height:1;margin-left:2px;flex-shrink:0;';
+
+    infoBtn.addEventListener('mouseenter', function() { infoBtn.style.opacity = '1'; });
+    infoBtn.addEventListener('mouseleave', function() { infoBtn.style.opacity = '0.6'; });
+    infoBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      popover.style.display = popover.style.display === 'none' ? 'block' : 'none';
+    });
+
     brand.appendChild(logo);
     brand.appendChild(brandText);
+    brand.appendChild(infoBtn); // On the left side!
+
+    // Left-aligned Popover Box
+    popover.innerHTML =
+      '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Founder-to-founder growth</div>' +
+      '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network — founders who display each other\'s startups for free mutual traffic. No ads, no cost.</div>' +
+      '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free →</a>';
+
+    document.addEventListener('click', function(e) {
+      if (popover.style.display === 'block' && !popover.contains(e.target) && e.target !== infoBtn) {
+        popover.style.display = 'none';
+      }
+    });
 
     var divider = document.createElement('span');
     divider.style.cssText = 'width:1px;height:14px;background:currentColor;opacity:0.15;flex-shrink:0;';
 
-    // Content
+    // Center Content (Promoted Startup Profile)
     var profile = document.createElement('div');
     profile.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1;';
 
@@ -264,7 +307,7 @@ export default function handler(req, res) {
     profile.appendChild(avatarContainer);
     profile.appendChild(profileText);
 
-    // Visit Button
+    // Right Action: Visit Button
     var visitBtn = document.createElement('a');
     visitBtn.href = promotion.url || '#';
     visitBtn.target = '_blank';
@@ -289,7 +332,7 @@ export default function handler(req, res) {
       });
     });
 
-    // Close Button with Teardown Safeguard
+    // Right Action: Close Button
     var closeBtn = document.createElement('button');
     closeBtn.textContent = '\\u00d7';
     closeBtn.setAttribute('aria-label', 'Close bar');
@@ -315,9 +358,10 @@ export default function handler(req, res) {
     bar.appendChild(closeBtn);
 
     root.appendChild(bar);
+    root.appendChild(popover);
     body.appendChild(root);
 
-    // Body Adjustments
+    // Body Offset
     if (body) {
       var existingPad = parseInt(window.getComputedStyle(body).paddingTop) || 0;
       body.style.paddingTop = (existingPad + BAR_HEIGHT) + 'px';
@@ -350,7 +394,7 @@ export default function handler(req, res) {
       }
     } catch (e) {}
 
-    // SPA Route Navigation Listeners
+    // Navigation Observers
     var handleRoute = function() {
       if (!isDismissed) sweepFixedElements(root);
     };
