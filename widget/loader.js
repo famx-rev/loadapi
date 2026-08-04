@@ -93,7 +93,9 @@ export default function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         keepalive: true,
-      }).catch(function () {});
+      }).catch(function (err) {
+        console.warn('[Loadbar] Track error:', err);
+      });
     } catch (e) {}
   }
 
@@ -220,6 +222,9 @@ export default function handler(req, res) {
       }
     }
 
+    // Promoted ID target lookup helper
+    var promoId = promotion.id || promotion._id || promotion.startup_id || null;
+
     // Full Bar Click Handler (Goes to Promoted Website)
     function handlePromoVisit(e) {
       var target = promotion.url || '#';
@@ -229,7 +234,7 @@ export default function handler(req, res) {
       track('click', {
         device: detectDevice(),
         referrer: window.location.hostname,
-        promoted_id: promotion.id,
+        promoted_id: promoId,
       });
     }
 
@@ -272,10 +277,10 @@ export default function handler(req, res) {
     brand.appendChild(infoBtn);
     brand.appendChild(brandLink);
 
-    // Left Popover Box
+    // Left Popover Box (Cleaned unescaped apostrophe)
     popover.innerHTML =
       '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Founder-to-founder growth</div>' +
-      '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup\\\'s products for free mutual traffic. No ads, no cost.</div>' +
+      '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup\'s products for free mutual traffic. No ads, no cost.</div>' +
       '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free &rarr;</a>';
 
     popover.addEventListener('click', function(e) {
@@ -356,7 +361,7 @@ export default function handler(req, res) {
 
     // Right Action: Close Button
     var closeBtn = document.createElement('button');
-    closeBtn.textContent = '\\u00d7';
+    closeBtn.textContent = '\u00d7';
     closeBtn.setAttribute('aria-label', 'Close bar');
     closeBtn.style.cssText =
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
@@ -426,10 +431,11 @@ export default function handler(req, res) {
 
     sweepFixedElements(root);
 
+    // Trigger Impression Track with Promo ID Resolution
     track('impression', {
       device: detectDevice(),
       referrer: window.location.hostname,
-      promoted_id: promotion.id,
+      promoted_id: promoId,
     });
   }
 })();`;
