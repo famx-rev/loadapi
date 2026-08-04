@@ -203,6 +203,7 @@ export default function handler(req, res) {
       'color:#9ca3af;cursor:pointer;padding:0 4px;line-height:1;';
     closeBtn.addEventListener('click', function () {
       root.style.display = 'none';
+      restoreLayout();
     });
 
     bar.appendChild(brand);
@@ -214,12 +215,39 @@ export default function handler(req, res) {
     root.appendChild(bar);
     document.body.appendChild(root);
 
-    document.body.style.marginTop = '44px';
+    // --- overlap fix helpers -------------------------------------------
+    // Instead of a hardcoded 44px margin (which gets clobbered by the
+    // host site's own CSS resets / !important rules, or is wrong if the
+    // bar wraps to a different height), measure the real rendered bar
+    // height and force the push-down with !important so nothing on the
+    // host page can sit underneath it.
+    var origBodyMarginTop = document.body.style.marginTop;
+    var origHtmlScrollPaddingTop = document.documentElement.style.scrollPaddingTop;
+
+    pushPageDown();
 
     track('impression', {
       device: detectDevice(),
       referrer: window.location.hostname,
     });
+
+    function pushPageDown() {
+      var h = bar.getBoundingClientRect().height || 44;
+      document.body.style.setProperty('margin-top', h + 'px', 'important');
+      document.documentElement.style.setProperty('scroll-padding-top', h + 'px', 'important');
+    }
+
+    function restoreLayout() {
+      document.body.style.setProperty('margin-top', origBodyMarginTop || '0px');
+      document.documentElement.style.setProperty(
+        'scroll-padding-top',
+        origHtmlScrollPaddingTop || '0px'
+      );
+    }
+
+    // Re-measure on resize in case the bar's height changes (e.g. text
+    // wraps on narrower viewports), so the page never overlaps it.
+    window.addEventListener('resize', pushPageDown);
   }
 })();`;
 
