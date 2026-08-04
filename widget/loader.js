@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader - Clean Transparent Favicon in Dark Mode
+ * Loadbar widget loader - Favicon Inversion Fix for Dark Mode
  */
 (function () {
   'use strict';
@@ -204,10 +204,12 @@ export default function handler(req, res) {
       }
 
       if (faviconImg) {
-        // Keep true background transparency while making dark icons visible in dark mode
+        // Invert colors in dark mode and use mix-blend-mode: screen to make dark background transparent
         faviconImg.style.cssText =
           'width:100%;height:100%;object-fit:contain;display:block;background:transparent;' +
-          (isDark ? 'filter:drop-shadow(0px 0px 1px rgba(255,255,255,0.8));' : 'filter:none;');
+          (isDark
+            ? 'filter:invert(1);mix-blend-mode:screen;'
+            : 'filter:none;mix-blend-mode:normal;');
       }
 
       if (popover) {
