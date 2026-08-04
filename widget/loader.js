@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader v1.4
+ * Loadbar widget loader
  * Self-contained, no dependencies. Loads asynchronously.
  *
  * Usage:
@@ -203,7 +203,6 @@ export default function handler(req, res) {
       'color:#9ca3af;cursor:pointer;padding:0 4px;line-height:1;';
     closeBtn.addEventListener('click', function () {
       root.style.display = 'none';
-      restoreLayout();
     });
 
     bar.appendChild(brand);
@@ -212,100 +211,15 @@ export default function handler(req, res) {
     if (promoWrap) bar.appendChild(promoWrap);
     bar.appendChild(closeBtn);
 
-    // --- overlap fix -----------------------------------------------------
-    // A margin/transform on <body> either misses `position: fixed`
-    // descendants entirely, or forces us to rewrap the whole DOM (risky:
-    // breaks host CSS selectors like `body > header` and any JS that
-    // walks body's direct children).
-    //
-    // Instead, directly find the host site's own fixed/sticky elements
-    // pinned at top:0 (almost always their header/nav) and nudge just
-    // their `top` down by the bar's height. Normal-flow content is
-    // pushed with body padding-top (added on top of whatever padding
-    // already exists, so we don't clobber it) plus scroll-padding-top so
-    // anchor-jump scrolling still lands below the bar.
-    var originalBodyPaddingTop = document.body.style.paddingTop || '';
-    var originalScrollPaddingTop = document.documentElement.style.scrollPaddingTop || '';
-    var basePaddingTop = parseInt(getComputedStyle(document.body).paddingTop, 10) || 0;
-
-    function shiftFixedElement(el, h) {
-      try {
-        if (!el || el.nodeType !== 1) return;
-        if (el === root || root.contains(el)) return;
-        if (el.dataset && el.dataset.loadbarShifted === '1') return;
-        var cs = getComputedStyle(el);
-        if (cs.position !== 'fixed' && cs.position !== 'sticky') return;
-        var topRaw = cs.top;
-        if (!topRaw || topRaw === 'auto' || !/px$/.test(topRaw)) return;
-        var originalPx = parseFloat(topRaw);
-        if (isNaN(originalPx) || originalPx !== 0) return;
-        el.dataset.loadbarOriginalTop = el.style.top || '';
-        el.style.setProperty('top', h + 'px', 'important');
-        el.dataset.loadbarShifted = '1';
-      } catch (e) {}
-    }
-
-    function unshiftFixedElements() {
-      try {
-        var nodes = document.querySelectorAll('[data-loadbar-shifted="1"]');
-        for (var i = 0; i < nodes.length; i++) {
-          var el = nodes[i];
-          try {
-            el.style.top = el.dataset.loadbarOriginalTop || '';
-            delete el.dataset.loadbarOriginalTop;
-            delete el.dataset.loadbarShifted;
-          } catch (e) {}
-        }
-      } catch (e) {}
-    }
-
-    function sweepFixedElements(h) {
-      try {
-        var nodes = document.querySelectorAll('*');
-        for (var i = 0; i < nodes.length; i++) shiftFixedElement(nodes[i], h);
-      } catch (e) {}
-    }
-
-    function pushPageDown() {
-      var h = bar.getBoundingClientRect().height || 44;
-      document.body.style.setProperty('padding-top', (basePaddingTop + h) + 'px', 'important');
-      document.documentElement.style.setProperty('scroll-padding-top', h + 'px', 'important');
-      sweepFixedElements(h);
-      return h;
-    }
-
-    function restoreLayout() {
-      document.body.style.setProperty('padding-top', originalBodyPaddingTop || '0px');
-      document.documentElement.style.setProperty(
-        'scroll-padding-top',
-        originalScrollPaddingTop || '0px'
-      );
-      unshiftFixedElements();
-    }
-
     root.appendChild(bar);
     document.body.appendChild(root);
 
-    pushPageDown();
+    document.body.style.marginTop = '44px';
 
     track('impression', {
       device: detectDevice(),
       referrer: window.location.hostname,
     });
-
-    // Re-sweep when the bar's own height changes, and when the host page
-    // renders new fixed/sticky elements later (common on SPAs where the
-    // header mounts after our script runs).
-    window.addEventListener('resize', pushPageDown);
-    try {
-      var resweep = function () {
-        var h = bar.getBoundingClientRect().height || 44;
-        sweepFixedElements(h);
-      };
-      var mo = new MutationObserver(resweep);
-      mo.observe(document.body, { childList: true, subtree: true });
-      window.addEventListener('load', resweep);
-    } catch (e) {}
   }
 })();`;
 
