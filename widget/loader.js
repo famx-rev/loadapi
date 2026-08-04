@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader with SPA / Dynamic Layout Observer
+ * Loadbar widget loader with Teardown Safety & Observer Cleanup
  */
 (function () {
   'use strict';
@@ -27,6 +27,7 @@ export default function handler(req, res) {
   var apiBase = 'https://loadapi.vercel.app';
   var BAR_HEIGHT = 44;
   var layoutObserver = null;
+  var isDismissed = false;
 
   function detectTheme() {
     var dataTheme = thisScript.getAttribute('data-theme');
@@ -123,7 +124,7 @@ export default function handler(req, res) {
 
   function shiftFixedElement(el, root) {
     try {
-      if (!el || el.nodeType !== 1) return;
+      if (isDismissed || !el || el.nodeType !== 1) return;
       if (el === root || (root && root.contains && root.contains(el))) return;
       
       var cs = window.getComputedStyle(el);
@@ -132,7 +133,6 @@ export default function handler(req, res) {
       var topRaw = cs.top;
       if (!topRaw || topRaw === 'auto') return;
 
-      // Check if element was reset by React/Vue re-render
       if (el.dataset && el.dataset.loadbarShifted === '1') {
         if (el.style.top === (BAR_HEIGHT + 'px') || parseFloat(topRaw) >= BAR_HEIGHT) return;
       }
@@ -147,6 +147,7 @@ export default function handler(req, res) {
   }
 
   function sweepFixedElements(root) {
+    if (isDismissed) return;
     try {
       var nodes = document.querySelectorAll('*');
       for (var i = 0; i < nodes.length; i++) {
@@ -283,7 +284,7 @@ export default function handler(req, res) {
       });
     });
 
-    // Close Button
+    // Close Button with Teardown Safeguard
     var closeBtn = document.createElement('button');
     closeBtn.textContent = '\\u00d7';
     closeBtn.setAttribute('aria-label', 'Close bar');
@@ -291,7 +292,11 @@ export default function handler(req, res) {
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
       'color:currentColor;opacity:0.6;cursor:pointer;padding:0 4px;line-height:1;';
     closeBtn.addEventListener('click', function () {
-      if (layoutObserver) layoutObserver.disconnect();
+      isDismissed = true;
+      if (layoutObserver) {
+        layoutObserver.disconnect();
+        layoutObserver = null;
+      }
       root.remove();
       if (body) body.style.paddingTop = originalBodyPaddingTop;
       if (html) html.style.scrollPaddingTop = originalScrollPaddingTop;
@@ -316,9 +321,10 @@ export default function handler(req, res) {
       html.style.scrollPaddingTop = BAR_HEIGHT + 'px';
     }
 
-    // Continuous Layout Observer for SPA Route Changes and Dashboard UI Updates
+    // Dynamic Observer Registration
     try {
       layoutObserver = new MutationObserver(function () {
+        if (isDismissed) return;
         sweepFixedElements(root);
         
         var newTheme = detectTheme();
@@ -339,9 +345,12 @@ export default function handler(req, res) {
       }
     } catch (e) {}
 
-    // SPA Navigation Listeners
-    window.addEventListener('popstate', function() { sweepFixedElements(root); });
-    window.addEventListener('hashchange', function() { sweepFixedElements(root); });
+    // SPA Route Navigation Listeners
+    var handleRoute = function() {
+      if (!isDismissed) sweepFixedElements(root);
+    };
+    window.addEventListener('popstate', handleRoute);
+    window.addEventListener('hashchange', handleRoute);
 
     sweepFixedElements(root);
 
