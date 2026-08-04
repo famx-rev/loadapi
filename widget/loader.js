@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader with Auto Dark/Light theme detection
+ * Loadbar widget loader with Auto Dark/Light theme & Favicon rendering
  */
 (function () {
   'use strict';
@@ -202,12 +202,30 @@ export default function handler(req, res) {
     var profile = document.createElement('div');
     profile.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1;';
 
-    var avatar = document.createElement('span');
-    avatar.textContent = (promotion.name || '?')[0].toUpperCase();
-    avatar.style.cssText =
+    // Favicon Element with Fallback
+    var targetUrl = promotion.url || (promotion.domain ? 'https://' + promotion.domain : '');
+    var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + encodeURIComponent(targetUrl) + '&size=128';
+
+    var avatarContainer = document.createElement('span');
+    avatarContainer.style.cssText =
       'width:22px;height:22px;border-radius:5px;display:flex;align-items:center;' +
-      'justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;' +
+      'justify-content:center;overflow:hidden;flex-shrink:0;' +
       'background:' + gradient(promotion) + ';';
+
+    var faviconImg = document.createElement('img');
+    faviconImg.src = faviconUrl;
+    faviconImg.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+
+    faviconImg.onerror = function () {
+      // Fallback to text initial if favicon fails to load
+      avatarContainer.innerHTML = '';
+      var initialSpan = document.createElement('span');
+      initialSpan.textContent = (promotion.name || '?')[0].toUpperCase();
+      initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
+      avatarContainer.appendChild(initialSpan);
+    };
+
+    avatarContainer.appendChild(faviconImg);
 
     var profileText = document.createElement('p');
     profileText.style.cssText =
@@ -221,7 +239,7 @@ export default function handler(req, res) {
     profileText.appendChild(profileName);
     profileText.appendChild(profileTag);
 
-    profile.appendChild(avatar);
+    profile.appendChild(avatarContainer);
     profile.appendChild(profileText);
 
     // "Visit" Action Link
@@ -281,7 +299,7 @@ export default function handler(req, res) {
       html.style.scrollPaddingTop = BAR_HEIGHT + 'px';
     }
 
-    // Dynamic Theme Observer for On-the-Fly Website Theme Switches
+    // Dynamic Theme Observer
     try {
       var observer = new MutationObserver(function () {
         var newTheme = detectTheme();
