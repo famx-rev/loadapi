@@ -1,41 +1,68 @@
+// File: pages/api/track.js
 import pool from './db.js';
-import { json, errorResponse } from './_helpers.js';
+
+// Helper function to extract the IP address from the request headers
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.socket?.remoteAddress;
+  return ip || 'unknown';
+}
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return errorResponse(res, 'Method not allowed', 405);
-
-  const body = req.body;
-  if (!body) return errorResponse(res, 'Invalid request body', 400);
-
-  const startupId = typeof body.startup_id === 'string' ? body.startup_id : '';
-  const kind = typeof body.kind === 'string' ? body.kind : '';
-  if (!startupId || !['impression', 'click'].includes(kind)) {
-    return errorResponse(res, 'startup_id and kind (impression|click) are required', 400);
+  // 1. Only allow POST requests
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const [rows] = await pool.execute('SELECT id FROM startups WHERE id = ?', [startupId]);
-  if (rows.length === 0) return errorResponse(res, 'Startup not found', 404);
-
-  const fields = ['startup_id', 'kind'];
-  const values = [startupId, kind];
-  for (const f of ['country', 'country_code', 'city', 'device', 'referrer']) {
-    const v = body[f];
-    if (typeof v === 'string' && v.length > 0 && v.length < 100) {
-      fields.push(f);
-      values.push(v);
-    }
+  // 2. Ensure database is connected
+  if (!pool) {
+    return res.status(500).json({ error: 'Database not initialized' });
   }
-
-  const columns = fields.join(', ');
-  const placeholders = fields.map(() => '?').join(', ');
 
   try {
+    const body = req.body;
+    if (!body || Object.keys(body).length === 0) {
+      return res.status(400).json({ error: 'Invalid request body' });
+    }
+
+    // 3. Read startup_id from the event data sent by the frontend widget
+    const startupId = body.startup_id;
+    if (!startupId) {
+      return res.status(400).json({ error: 'startup_id is required' });
+    }
+
+    // 4. Validate that the startup actually exists in your DB (Optional but recommended)
+    const [rows] = await pool.execute('SELECT id FROM startups WHERE id = ?', [startupId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Startup not found' });
+    }
+
+    // 5. Get the server-side IP address
+    const ip = getClientIp(req);
+
+    // 6. Bundle all the rich JSON data together
+    const eventData = { 
+      ...body, 
+      ip: ip, 
+      recordedVia: 'widget' 
+    };
+
+    // 7. Insert into the simplified events table
+    // Table columns: id (auto), project_id, event_data, created_at
+    // We map your frontend "startup_id" to the DB's "project_id" column
     await pool.execute(
-      `INSERT INTO events (${columns}, created_at) VALUES (${placeholders}, NOW())`,
-      values,
+      'INSERT INTO events (project_id, event_data, created_at) VALUES (?, ?, NOW())',
+      [startupId, JSON.stringify(eventData)]
     );
-    return json(res, { ok: true }, 202);
-  } catch {
-    return errorResponse(res, 'Could not track event', 500);
+
+    // 8. Return the exact success response from Code 2
+    return res.status(200).json({ success: true, recorded: true });
+
+  } catch (error) {
+    console.error('API /track Error:', error.message);
+    return res.status(500).json({ 
+      error: 'Failed to save event', 
+      details: error.message 
+    });
   }
 }
