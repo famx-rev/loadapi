@@ -48,14 +48,13 @@ export default async function handler(req, res) {
     };
 
     // 7. Insert into the simplified events table
-    // Table columns: id (auto), project_id, event_data, created_at
-    // We map your frontend "startup_id" to the DB's "project_id" column
+    // Table columns: id (auto), startup_id, event_data, created_at
     await pool.execute(
-      'INSERT INTO events (project_id, event_data, created_at) VALUES (?, ?, NOW())',
+      'INSERT INTO events (startup_id, event_data, created_at) VALUES (?, ?, NOW())',
       [startupId, JSON.stringify(eventData)]
     );
 
-    // 8. Return the exact success response from Code 2
+    // 8. Return the exact success response
     return res.status(200).json({ success: true, recorded: true });
 
   } catch (error) {
