@@ -11,14 +11,10 @@ export default function handler(req, res) {
 (function () {
   'use strict';
 
-  var thisScript =
-    document.currentScript ||
-    (function () {
-      var scripts = document.getElementsByTagName('script');
-      return scripts[scripts.length - 1];
-    })();
+  // FIX 2: Better Script Tag Detection (Resilient against async loading)
+  var thisScript = document.currentScript || document.querySelector('script[data-startup-id]');
 
-  var startupId = thisScript.getAttribute('data-startup-id');
+  var startupId = thisScript ? thisScript.getAttribute('data-startup-id') : null;
   if (!startupId) {
     console.warn('[Loadbar] Missing data-startup-id attribute');
     return;
@@ -28,6 +24,15 @@ export default function handler(req, res) {
   var BAR_HEIGHT = 44;
   var layoutObserver = null;
   var isDismissed = false;
+
+  // FIX 1: Debounce function for the MutationObserver
+  function debounce(func, wait) {
+    var timeout;
+    return function() {
+      clearTimeout(timeout);
+      timeout = setTimeout(func, wait);
+    };
+  }
 
   function detectTheme() {
     var dataTheme = thisScript.getAttribute('data-theme');
@@ -142,7 +147,15 @@ export default function handler(req, res) {
       var originalPx = parseFloat(topRaw);
       if (isNaN(originalPx)) return;
 
-      el.dataset.loadbarOriginalTop = el.style.top || '';
+      // FIX 4: CLS - Save original transitions and apply smooth layout shifting
+      if (typeof el.dataset.loadbarOriginalTop === 'undefined') {
+        el.dataset.loadbarOriginalTop = el.style.top || '';
+      }
+      if (typeof el.dataset.loadbarOriginalTransition === 'undefined') {
+        el.dataset.loadbarOriginalTransition = el.style.transition || '';
+      }
+      
+      el.style.transition = el.dataset.loadbarOriginalTransition ? el.dataset.loadbarOriginalTransition + ', top 0.4s ease' : 'top 0.4s ease';
       el.style.top = (originalPx + BAR_HEIGHT) + 'px';
       el.dataset.loadbarShifted = '1';
     } catch (e) {}
@@ -164,7 +177,9 @@ export default function handler(req, res) {
       for (var i = 0; i < nodes.length; i++) {
         var el = nodes[i];
         el.style.top = el.dataset.loadbarOriginalTop || '';
+        el.style.transition = el.dataset.loadbarOriginalTransition || '';
         delete el.dataset.loadbarOriginalTop;
+        delete el.dataset.loadbarOriginalTransition;
         delete el.dataset.loadbarShifted;
       }
     } catch (e) {}
@@ -179,13 +194,23 @@ export default function handler(req, res) {
 
     var originalBodyPaddingTop = body ? body.style.paddingTop || '' : '';
     var originalScrollPaddingTop = html ? html.style.scrollPaddingTop || '' : '';
+    var originalBodyTransition = body ? body.style.transition || '' : '';
+    var originalHtmlTransition = html ? html.style.transition || '' : '';
 
+    // FIX 3: CSS Encapsulation (all:initial + Shadow DOM wall)
+    // FIX 4: CLS (translateY(-100%) to start hidden before sliding in smoothly)
     var root = document.createElement('div');
     root.id = 'loadbar-root';
     root.style.cssText =
-      'position:fixed;top:0;left:0;right:0;z-index:2147483647;' +
+      'all:initial;display:block;position:fixed;top:0;left:0;right:0;z-index:2147483647;' +
+      'transform:translateY(-100%);transition:transform 0.4s ease;';
+
+    var shadow = root.attachShadow ? root.attachShadow({ mode: 'closed' }) : root;
+    
+    var container = document.createElement('div');
+    container.style.cssText = 
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;' +
-      'font-size:13px;line-height:1.4;';
+      'font-size:13px;line-height:1.4;box-sizing:border-box;width:100%;';
 
     var bar = document.createElement('div');
     var popover = document.createElement('div');
@@ -222,10 +247,8 @@ export default function handler(req, res) {
       }
     }
 
-    // Promoted ID target lookup helper
     var promoId = promotion.id || promotion._id || promotion.startup_id || null;
 
-    // Full Bar Click Handler (Goes to Promoted Website)
     function handlePromoVisit(e) {
       var target = promotion.url || '#';
       if (target !== '#') {
@@ -240,7 +263,6 @@ export default function handler(req, res) {
 
     bar.addEventListener('click', handlePromoVisit);
 
-    // Hover / Impression Tracker (Fires every time the mouse enters the bar)
     bar.addEventListener('mouseenter', function () {
       track('impression', {
         device: detectDevice(),
@@ -249,11 +271,9 @@ export default function handler(req, res) {
       });
     });
 
-    // Left Brand Area
     var brand = document.createElement('div');
     brand.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
 
-    // Far Left Info (i) Button
     var infoBtn = document.createElement('button');
     infoBtn.textContent = 'i';
     infoBtn.setAttribute('aria-label', 'About Loadbar');
@@ -270,7 +290,6 @@ export default function handler(req, res) {
       popover.style.display = popover.style.display === 'none' ? 'block' : 'none';
     });
 
-    // Brand Text Link -> Redirects to loadbar.vercel.app
     var brandLink = document.createElement('a');
     brandLink.href = 'https://loadbar.vercel.app';
     brandLink.target = '_blank';
@@ -286,7 +305,6 @@ export default function handler(req, res) {
     brand.appendChild(infoBtn);
     brand.appendChild(brandLink);
 
-    // Left Popover Box (Cleaned unescaped apostrophe using HTML entity)
     popover.innerHTML =
       '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Founder-to-founder growth</div>' +
       '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup&#39;s products for free mutual traffic. No ads, no cost.</div>' +
@@ -305,7 +323,6 @@ export default function handler(req, res) {
     var divider = document.createElement('span');
     divider.style.cssText = 'width:1px;height:14px;background:currentColor;opacity:0.15;flex-shrink:0;';
 
-    // Center Content
     var profile = document.createElement('div');
     profile.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1;';
 
@@ -346,7 +363,6 @@ export default function handler(req, res) {
     profile.appendChild(avatarContainer);
     profile.appendChild(profileText);
 
-    // Right Action: Visit Button
     var visitBtn = document.createElement('a');
     visitBtn.href = promotion.url || '#';
     visitBtn.target = '_blank';
@@ -368,7 +384,6 @@ export default function handler(req, res) {
       handlePromoVisit(e);
     });
 
-    // Right Action: Close Button
     var closeBtn = document.createElement('button');
     closeBtn.textContent = '\u00d7';
     closeBtn.setAttribute('aria-label', 'Close bar');
@@ -383,8 +398,14 @@ export default function handler(req, res) {
         layoutObserver = null;
       }
       root.remove();
-      if (body) body.style.paddingTop = originalBodyPaddingTop;
-      if (html) html.style.scrollPaddingTop = originalScrollPaddingTop;
+      if (body) {
+        body.style.paddingTop = originalBodyPaddingTop;
+        body.style.transition = originalBodyTransition;
+      }
+      if (html) {
+        html.style.scrollPaddingTop = originalScrollPaddingTop;
+        html.style.transition = originalHtmlTransition;
+      }
       unshiftFixedElements();
     });
 
@@ -394,22 +415,29 @@ export default function handler(req, res) {
     bar.appendChild(visitBtn);
     bar.appendChild(closeBtn);
 
-    root.appendChild(bar);
-    root.appendChild(popover);
+    container.appendChild(bar);
+    container.appendChild(popover);
+    shadow.appendChild(container);
     body.appendChild(root);
 
-    // Body Offset
+    // FIX 4: CLS - Smooth layout adjustments for the host page
     if (body) {
       var existingPad = parseInt(window.getComputedStyle(body).paddingTop) || 0;
+      body.style.transition = body.style.transition ? body.style.transition + ', padding-top 0.4s ease' : 'padding-top 0.4s ease';
       body.style.paddingTop = (existingPad + BAR_HEIGHT) + 'px';
     }
     if (html) {
+      html.style.transition = html.style.transition ? html.style.transition + ', scroll-padding-top 0.4s ease' : 'scroll-padding-top 0.4s ease';
       html.style.scrollPaddingTop = BAR_HEIGHT + 'px';
     }
 
-    // Dynamic Observer Registration
+    // Force a DOM reflow, then apply the transform to slide the bar in smoothly
+    void root.offsetWidth;
+    root.style.transform = 'translateY(0)';
+
+    // FIX 1: Wrapping the MutationObserver callback in the debounce function
     try {
-      layoutObserver = new MutationObserver(function () {
+      layoutObserver = new MutationObserver(debounce(function () {
         if (isDismissed) return;
         sweepFixedElements(root);
         
@@ -418,7 +446,7 @@ export default function handler(req, res) {
           currentTheme = newTheme;
           applyThemeStyles(newTheme === 'dark');
         }
-      });
+      }, 150));
 
       var targetNode = body || html;
       if (targetNode) {
@@ -431,7 +459,6 @@ export default function handler(req, res) {
       }
     } catch (e) {}
 
-    // Navigation Observers
     var handleRoute = function() {
       if (!isDismissed) sweepFixedElements(root);
     };
