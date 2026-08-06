@@ -1,3 +1,4 @@
+// File: pages/api/leaders.js
 import pool from './db.js';
 import { json, errorResponse } from './_helpers.js';
 
@@ -17,8 +18,9 @@ export default async function handler(req, res) {
     const ids = startups.map((s) => s.id);
     const quotedIds = ids.map((id) => pool.escape(id)).join(',');
 
+    // FIX: Extract 'eventName' directly from the JSON column using ->>
     const [agg] = await pool.query(
-      `SELECT startup_id, kind, COUNT(*) as count
+      `SELECT startup_id, event_data->>'$.eventName' as kind, COUNT(*) as count
        FROM events
        WHERE startup_id IN (${quotedIds}) AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
        GROUP BY startup_id, kind`,
@@ -27,8 +29,9 @@ export default async function handler(req, res) {
     const stats = new Map();
     for (const e of agg) {
       const entry = stats.get(e.startup_id) ?? { impressions: 0, clicks: 0 };
+      // Map the JSON eventName ('impression' or 'click') to the stats
       if (e.kind === 'impression') entry.impressions += e.count;
-      else entry.clicks += e.count;
+      if (e.kind === 'click') entry.clicks += e.count;
       stats.set(e.startup_id, entry);
     }
 
