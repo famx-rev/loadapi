@@ -1,3 +1,4 @@
+// File: pages/api/analytics.js (or similar)
 import pool from './db.js';
 import { json, errorResponse, requireUser } from './_helpers.js';
 
@@ -18,24 +19,27 @@ export default async function handler(req, res) {
   if (startupRows[0].owner_id !== userId) return errorResponse(res, 'Not authorized', 403);
 
   try {
+    // FIX 1: Extract eventName for impressions and clicks
     const [impressionRows] = await pool.execute(
-      'SELECT COUNT(*) as count FROM events WHERE startup_id = ? AND kind = ?',
+      "SELECT COUNT(*) as count FROM events WHERE startup_id = ? AND event_data->>'$.eventName' = ?",
       [startupId, 'impression'],
     );
     const [clickRows] = await pool.execute(
-      'SELECT COUNT(*) as count FROM events WHERE startup_id = ? AND kind = ?',
+      "SELECT COUNT(*) as count FROM events WHERE startup_id = ? AND event_data->>'$.eventName' = ?",
       [startupId, 'click'],
     );
     const impressionCount = impressionRows[0].count;
     const clickCount = clickRows[0].count;
     const ctr = impressionCount > 0 ? (clickCount / impressionCount) * 100 : 0;
 
+    // FIX 2: Extract eventName dynamically for the daily grouping
     const [dailyRows] = await pool.execute(
-      `SELECT DATE(created_at) as day, kind, COUNT(*) as count
+      `SELECT DATE(created_at) as day, event_data->>'$.eventName' as kind, COUNT(*) as count
        FROM events WHERE startup_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
        GROUP BY DATE(created_at), kind`,
       [startupId],
     );
+    
     const dayMap = new Map();
     for (const r of dailyRows) {
       const day = typeof r.day === 'object' && r.day instanceof Date
@@ -50,8 +54,16 @@ export default async function handler(req, res) {
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([day, v]) => ({ day, ...v }));
 
+    // FIX 3: Map all the old columns directly out of the JSON object
     const [recentRows] = await pool.execute(
-      `SELECT country, country_code, city, device, referrer, kind, created_at
+      `SELECT 
+         event_data->>'$.country' as country, 
+         event_data->>'$.country_code' as country_code, 
+         event_data->>'$.city' as city, 
+         event_data->>'$.device' as device, 
+         event_data->>'$.referrer' as referrer, 
+         event_data->>'$.eventName' as kind, 
+         created_at
        FROM events WHERE startup_id = ?
        ORDER BY created_at DESC LIMIT 20`,
       [startupId],
@@ -115,7 +127,8 @@ export default async function handler(req, res) {
         activity,
       },
     });
-  } catch {
+  } catch (err) {
+    console.error('Analytics load error:', err);
     return errorResponse(res, 'Could not load analytics', 500);
   }
 }
