@@ -85,13 +85,28 @@ export default function handler(req, res) {
     return 'linear-gradient(135deg, ' + from + ', ' + to + ')';
   }
 
-  function track(kind, extra) {
-    var payload = { startup_id: startupId, kind: kind };
+  // --- UPDATED TRACKING FUNCTION ---
+  // Now matches the rich JSON style from the analytics script
+  function track(eventName, extra) {
+    var payload = {
+      startup_id: startupId,
+      eventName: eventName,
+      timestamp: new Date().toISOString(),
+      url: window.location.href,
+      referrer: document.referrer,
+      userAgent: navigator.userAgent,
+      screenResolution: window.screen.width + 'x' + window.screen.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      language: navigator.language
+    };
+
     if (extra) {
       for (var k in extra) {
         if (extra.hasOwnProperty(k)) payload[k] = extra[k];
       }
     }
+
     try {
       fetch(apiBase + '/api/track', {
         method: 'POST',
@@ -254,20 +269,21 @@ export default function handler(req, res) {
       if (target !== '#') {
         window.open(target, '_blank', 'noopener,noreferrer');
       }
+      
+      // Updated Click Track Call
       track('click', {
         device: detectDevice(),
-        referrer: window.location.hostname,
-        promoted_id: promoId,
+        promoted_id: promoId
       });
     }
 
     bar.addEventListener('click', handlePromoVisit);
 
     bar.addEventListener('mouseenter', function () {
+      // Updated Impression Track Call
       track('impression', {
         device: detectDevice(),
-        referrer: window.location.hostname,
-        promoted_id: promoId,
+        promoted_id: promoId
       });
     });
 
