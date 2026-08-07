@@ -11,10 +11,12 @@ export default function handler(req, res) {
 (function () {
   'use strict';
 
-  // Better Script Tag Detection (Resilient against async loading)
-  var thisScript = document.currentScript || document.querySelector('script[data-startup-id]');
+  if (window.__loadbar_active) return;
+  window.__loadbar_active = true;
 
+  var thisScript = document.currentScript || document.querySelector('script[data-startup-id]');
   var startupId = thisScript ? thisScript.getAttribute('data-startup-id') : null;
+  
   if (!startupId) {
     console.warn('[Loadbar] Missing data-startup-id attribute');
     return;
@@ -25,15 +27,12 @@ export default function handler(req, res) {
   var layoutObserver = null;
   var isDismissed = false;
 
-  // Global state for continuous ad rotation
   var currentPromoId = null;
   var currentPromoUrl = '#';
   var rotationTimer = null;
 
-  // Global DOM element references for fast text/image swapping
   var elProfileName, elProfileTag, elFaviconImg, elAvatarContainer, elVisitBtn;
 
-  // Debounce function for the MutationObserver (Performance fix)
   function debounce(func, wait) {
     var timeout;
     return function() {
@@ -93,7 +92,6 @@ export default function handler(req, res) {
     return 'linear-gradient(135deg, ' + from + ', ' + to + ')';
   }
 
-  // Rich JSON Tracking Function
   function track(eventName, extra) {
     var payload = {
       startup_id: startupId,
@@ -151,7 +149,6 @@ export default function handler(req, res) {
       var originalPx = parseFloat(topRaw);
       if (isNaN(originalPx)) return;
 
-      // CLS Fix - Save original transitions and apply smooth layout shifting
       if (typeof el.dataset.loadbarOriginalTop === 'undefined') {
         el.dataset.loadbarOriginalTop = el.style.top || '';
       }
@@ -189,13 +186,14 @@ export default function handler(req, res) {
     } catch (e) {}
   }
 
-  // --- AD ROTATION ENGINE ---
   var serveUrl = apiBase + '/api/serve?startup_id=' + encodeURIComponent(startupId);
 
   function fetchAndRotate() {
     if (isDismissed) return;
     
-    fetch(serveUrl)
+    var bustCacheUrl = serveUrl + '&_cb=' + new Date().getTime();
+    
+    fetch(bustCacheUrl)
       .then(function (r) {
         if (!r.ok) throw new Error('serve failed');
         return r.json();
@@ -212,16 +210,19 @@ export default function handler(req, res) {
         updateBarContent(promoToShow);
       })
       .catch(function (e) {
-        console.warn('[Loadbar] Could not load bar:', e.message || e);
+        console.warn('[Loadbar] Could not rotate ad:', e.message || e);
       });
   }
 
-  // Start the engine
   fetchAndRotate();
   rotationTimer = setInterval(fetchAndRotate, 30000);
 
   function updateBarContent(promotion) {
-    currentPromoId = promotion.id || promotion._id || promotion.startup_id || null;
+    var newPromoId = promotion.id || promotion._id || promotion.startup_id || null;
+    
+    if (currentPromoId === newPromoId) return;
+
+    currentPromoId = newPromoId;
     currentPromoUrl = promotion.url || '#';
 
     if (elProfileName) elProfileName.textContent = promotion.name || '';
@@ -246,11 +247,8 @@ export default function handler(req, res) {
       };
     }
 
-    track('impression', {
-      device: detectDevice(),
-      promoted_id: currentPromoId,
-      auto_rotated: true
-    });
+    // FIX: Removed the automatic track('impression') from here entirely.
+    // Now, impressions will ONLY trigger when the user actually hovers over the bar.
   }
 
   function buildBarDOM() {
@@ -279,7 +277,6 @@ export default function handler(req, res) {
     var bar = document.createElement('div');
     var popover = document.createElement('div');
     
-    // Assign global element references
     elAvatarContainer = document.createElement('span');
     elFaviconImg = document.createElement('img');
     elProfileName = document.createElement('span');
@@ -322,16 +319,19 @@ export default function handler(req, res) {
       }
       track('click', {
         device: detectDevice(),
-        promoted_id: currentPromoId
+        // Always tracks the click for the ad CURRENTLY being shown
+        promoted_id: currentPromoId 
       });
     }
 
     bar.addEventListener('click', handlePromoVisit);
 
+    // This is the ONLY place an impression is logged now!
     bar.addEventListener('mouseenter', function () {
       track('impression', {
         device: detectDevice(),
-        promoted_id: currentPromoId,
+        // Always logs the impression for the ad CURRENTLY being shown
+        promoted_id: currentPromoId, 
         hovered: true
       });
     });
@@ -429,7 +429,6 @@ export default function handler(req, res) {
       e.stopPropagation();
       isDismissed = true;
       
-      // Stop continuous ad rotation
       if (rotationTimer) clearInterval(rotationTimer);
       
       if (layoutObserver) {
@@ -459,7 +458,6 @@ export default function handler(req, res) {
     shadow.appendChild(container);
     body.appendChild(root);
 
-    // Apply layout shifts smoothly
     if (body) {
       var existingPad = parseInt(window.getComputedStyle(body).paddingTop) || 0;
       body.style.transition = body.style.transition ? body.style.transition + ', padding-top 0.4s ease' : 'padding-top 0.4s ease';
@@ -470,10 +468,9 @@ export default function handler(req, res) {
       html.style.scrollPaddingTop = BAR_HEIGHT + 'px';
     }
 
-    void root.offsetWidth; // Force reflow
-    root.style.transform = 'translateY(0)'; // Slide in smoothly
+    void root.offsetWidth; 
+    root.style.transform = 'translateY(0)'; 
 
-    // Observer setup
     try {
       layoutObserver = new MutationObserver(debounce(function () {
         if (isDismissed) return;
