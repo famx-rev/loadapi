@@ -11,7 +11,7 @@ export default function handler(req, res) {
 (function () {
   'use strict';
 
-  // FIX 2: Better Script Tag Detection (Resilient against async loading)
+  // Better Script Tag Detection (Resilient against async loading)
   var thisScript = document.currentScript || document.querySelector('script[data-startup-id]');
 
   var startupId = thisScript ? thisScript.getAttribute('data-startup-id') : null;
@@ -25,7 +25,15 @@ export default function handler(req, res) {
   var layoutObserver = null;
   var isDismissed = false;
 
-  // FIX 1: Debounce function for the MutationObserver
+  // Global state for continuous ad rotation
+  var currentPromoId = null;
+  var currentPromoUrl = '#';
+  var rotationTimer = null;
+
+  // Global DOM element references for fast text/image swapping
+  var elProfileName, elProfileTag, elFaviconImg, elAvatarContainer, elVisitBtn;
+
+  // Debounce function for the MutationObserver (Performance fix)
   function debounce(func, wait) {
     var timeout;
     return function() {
@@ -85,8 +93,7 @@ export default function handler(req, res) {
     return 'linear-gradient(135deg, ' + from + ', ' + to + ')';
   }
 
-  // --- UPDATED TRACKING FUNCTION ---
-  // Now matches the rich JSON style from the analytics script
+  // Rich JSON Tracking Function
   function track(eventName, extra) {
     var payload = {
       startup_id: startupId,
@@ -126,24 +133,6 @@ export default function handler(req, res) {
     return 'desktop';
   }
 
-  var serveUrl = apiBase + '/api/serve?startup_id=' + encodeURIComponent(startupId);
-
-  fetch(serveUrl)
-    .then(function (r) {
-      if (!r.ok) throw new Error('serve failed');
-      return r.json();
-    })
-    .then(function (data) {
-      if (!data) return;
-      var promoToShow = data.promotion || data.startup;
-      if (!promoToShow) return;
-      
-      renderBar(promoToShow);
-    })
-    .catch(function (e) {
-      console.warn('[Loadbar] Could not load bar:', e.message || e);
-    });
-
   function shiftFixedElement(el, root) {
     try {
       if (isDismissed || !el || el.nodeType !== 1) return;
@@ -162,7 +151,7 @@ export default function handler(req, res) {
       var originalPx = parseFloat(topRaw);
       if (isNaN(originalPx)) return;
 
-      // FIX 4: CLS - Save original transitions and apply smooth layout shifting
+      // CLS Fix - Save original transitions and apply smooth layout shifting
       if (typeof el.dataset.loadbarOriginalTop === 'undefined') {
         el.dataset.loadbarOriginalTop = el.style.top || '';
       }
@@ -200,9 +189,71 @@ export default function handler(req, res) {
     } catch (e) {}
   }
 
-  function renderBar(promotion) {
-    if (document.getElementById('loadbar-root')) return;
+  // --- AD ROTATION ENGINE ---
+  var serveUrl = apiBase + '/api/serve?startup_id=' + encodeURIComponent(startupId);
 
+  function fetchAndRotate() {
+    if (isDismissed) return;
+    
+    fetch(serveUrl)
+      .then(function (r) {
+        if (!r.ok) throw new Error('serve failed');
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data) return;
+        var promoToShow = data.promotion || data.startup;
+        if (!promoToShow) return;
+        
+        if (!document.getElementById('loadbar-root')) {
+          buildBarDOM();
+        }
+        
+        updateBarContent(promoToShow);
+      })
+      .catch(function (e) {
+        console.warn('[Loadbar] Could not load bar:', e.message || e);
+      });
+  }
+
+  // Start the engine
+  fetchAndRotate();
+  rotationTimer = setInterval(fetchAndRotate, 30000);
+
+  function updateBarContent(promotion) {
+    currentPromoId = promotion.id || promotion._id || promotion.startup_id || null;
+    currentPromoUrl = promotion.url || '#';
+
+    if (elProfileName) elProfileName.textContent = promotion.name || '';
+    if (elProfileTag) elProfileTag.textContent = promotion.tagline ? ' — ' + promotion.tagline : '';
+    if (elVisitBtn) elVisitBtn.href = currentPromoUrl;
+
+    if (elFaviconImg && elAvatarContainer) {
+      var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
+      var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + cleanTargetUrl + '&size=128';
+      
+      elFaviconImg.src = faviconUrl;
+      elFaviconImg.style.display = 'block';
+      
+      elFaviconImg.onerror = function () {
+        elFaviconImg.style.display = 'none';
+        elAvatarContainer.innerHTML = '';
+        var initialSpan = document.createElement('span');
+        initialSpan.textContent = (promotion.name || '?')[0].toUpperCase();
+        initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
+        elAvatarContainer.style.background = gradient(promotion);
+        elAvatarContainer.appendChild(initialSpan);
+      };
+    }
+
+    track('impression', {
+      device: detectDevice(),
+      promoted_id: currentPromoId,
+      auto_rotated: true
+    });
+  }
+
+  function buildBarDOM() {
     var currentTheme = detectTheme();
     var html = document.documentElement;
     var body = document.body;
@@ -212,8 +263,6 @@ export default function handler(req, res) {
     var originalBodyTransition = body ? body.style.transition || '' : '';
     var originalHtmlTransition = html ? html.style.transition || '' : '';
 
-    // FIX 3: CSS Encapsulation (all:initial + Shadow DOM wall)
-    // FIX 4: CLS (translateY(-100%) to start hidden before sliding in smoothly)
     var root = document.createElement('div');
     root.id = 'loadbar-root';
     root.style.cssText =
@@ -229,24 +278,29 @@ export default function handler(req, res) {
 
     var bar = document.createElement('div');
     var popover = document.createElement('div');
-    var avatarContainer = document.createElement('span');
-    var faviconImg = document.createElement('img');
+    
+    // Assign global element references
+    elAvatarContainer = document.createElement('span');
+    elFaviconImg = document.createElement('img');
+    elProfileName = document.createElement('span');
+    elProfileTag = document.createElement('span');
+    elVisitBtn = document.createElement('a');
 
     function applyThemeStyles(isDark) {
       bar.style.cssText =
         'display:flex;align-items:center;gap:10px;height:' + BAR_HEIGHT + 'px;width:100%;' +
         'padding:0 14px;box-sizing:border-box;cursor:pointer;' +
-        'backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);' +
+        'backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:background 0.3s ease;' +
         (isDark
           ? 'background:rgba(24,24,27,0.92);border-bottom:1px solid rgba(255,255,255,0.1);color:#f3f4f6;'
           : 'background:rgba(255,255,255,0.92);border-bottom:1px solid rgba(0,0,0,0.08);color:#111827;');
 
-      if (avatarContainer) {
-        avatarContainer.style.background = 'transparent';
+      if (elAvatarContainer) {
+        elAvatarContainer.style.background = 'transparent';
       }
 
-      if (faviconImg) {
-        faviconImg.style.cssText =
+      if (elFaviconImg) {
+        elFaviconImg.style.cssText =
           'width:100%;height:100%;object-fit:contain;display:block;background:transparent;' +
           (isDark ? 'mix-blend-mode:lighten;' : 'mix-blend-mode:multiply;');
       }
@@ -262,28 +316,23 @@ export default function handler(req, res) {
       }
     }
 
-    var promoId = promotion.id || promotion._id || promotion.startup_id || null;
-
     function handlePromoVisit(e) {
-      var target = promotion.url || '#';
-      if (target !== '#') {
-        window.open(target, '_blank', 'noopener,noreferrer');
+      if (currentPromoUrl !== '#') {
+        window.open(currentPromoUrl, '_blank', 'noopener,noreferrer');
       }
-      
-      // Updated Click Track Call
       track('click', {
         device: detectDevice(),
-        promoted_id: promoId
+        promoted_id: currentPromoId
       });
     }
 
     bar.addEventListener('click', handlePromoVisit);
 
     bar.addEventListener('mouseenter', function () {
-      // Updated Impression Track Call
       track('impression', {
         device: detectDevice(),
-        promoted_id: promoId
+        promoted_id: currentPromoId,
+        hovered: true
       });
     });
 
@@ -292,7 +341,6 @@ export default function handler(req, res) {
 
     var infoBtn = document.createElement('button');
     infoBtn.textContent = 'i';
-    infoBtn.setAttribute('aria-label', 'About Loadbar');
     infoBtn.style.cssText =
       'width:15px;height:15px;border-radius:50%;border:1px solid currentColor;' +
       'background:transparent;color:currentColor;font-size:10px;font-weight:700;' +
@@ -309,14 +357,11 @@ export default function handler(req, res) {
     var brandLink = document.createElement('a');
     brandLink.href = 'https://loadbar.vercel.app';
     brandLink.target = '_blank';
-    brandLink.rel = 'noopener noreferrer';
     brandLink.textContent = 'Loadbar';
     brandLink.style.cssText =
       'font-size:11px;font-weight:700;text-transform:uppercase;' +
       'letter-spacing:0.05em;opacity:0.6;color:currentColor;text-decoration:none;cursor:pointer;';
-    brandLink.addEventListener('click', function(e) {
-      e.stopPropagation();
-    });
+    brandLink.addEventListener('click', function(e) { e.stopPropagation(); });
 
     brand.appendChild(infoBtn);
     brand.appendChild(brandLink);
@@ -326,10 +371,7 @@ export default function handler(req, res) {
       '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup&#39;s products for free mutual traffic. No ads, no cost.</div>' +
       '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free &rarr;</a>';
 
-    popover.addEventListener('click', function(e) {
-      e.stopPropagation();
-    });
-
+    popover.addEventListener('click', function(e) { e.stopPropagation(); });
     document.addEventListener('click', function(e) {
       if (popover.style.display === 'block' && !popover.contains(e.target) && e.target !== infoBtn) {
         popover.style.display = 'none';
@@ -342,60 +384,36 @@ export default function handler(req, res) {
     var profile = document.createElement('div');
     profile.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1;';
 
-    var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
-    var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + cleanTargetUrl + '&size=128';
-
-    avatarContainer.style.cssText =
+    elAvatarContainer.style.cssText =
       'width:22px;height:22px;border-radius:5px;display:flex;align-items:center;' +
       'justify-content:center;overflow:hidden;flex-shrink:0;background:transparent;';
-
-    faviconImg.src = faviconUrl;
-
-    faviconImg.onerror = function () {
-      avatarContainer.innerHTML = '';
-      var initialSpan = document.createElement('span');
-      initialSpan.textContent = (promotion.name || '?')[0].toUpperCase();
-      initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
-      avatarContainer.style.background = gradient(promotion);
-      avatarContainer.appendChild(initialSpan);
-    };
-
-    avatarContainer.appendChild(faviconImg);
+    elAvatarContainer.appendChild(elFaviconImg);
 
     applyThemeStyles(currentTheme === 'dark');
 
     var profileText = document.createElement('p');
-    profileText.style.cssText =
-      'margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-    var profileName = document.createElement('span');
-    profileName.textContent = promotion.name || '';
-    profileName.style.cssText = 'font-weight:600;';
-    var profileTag = document.createElement('span');
-    profileTag.textContent = promotion.tagline ? ' — ' + promotion.tagline : '';
-    profileTag.style.cssText = 'opacity:0.6;';
-    profileText.appendChild(profileName);
-    profileText.appendChild(profileTag);
+    profileText.style.cssText = 'margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    
+    elProfileName.style.cssText = 'font-weight:600;';
+    elProfileTag.style.cssText = 'opacity:0.6;';
+    
+    profileText.appendChild(elProfileName);
+    profileText.appendChild(elProfileTag);
 
-    profile.appendChild(avatarContainer);
+    profile.appendChild(elAvatarContainer);
     profile.appendChild(profileText);
 
-    var visitBtn = document.createElement('a');
-    visitBtn.href = promotion.url || '#';
-    visitBtn.target = '_blank';
-    visitBtn.rel = 'noopener noreferrer';
-    visitBtn.textContent = 'Visit →';
-    visitBtn.style.cssText =
+    elVisitBtn.target = '_blank';
+    elVisitBtn.textContent = 'Visit →';
+    elVisitBtn.style.cssText =
       'display:inline-flex;align-items:center;gap:4px;flex-shrink:0;' +
       'padding:4px 12px;border-radius:999px;font-size:11px;font-weight:500;' +
       'text-decoration:none;color:currentColor;background:rgba(125,125,125,0.12);' +
       'transition:background 0.15s ease;cursor:pointer;margin-right:4px;';
-    visitBtn.addEventListener('mouseenter', function () {
-      visitBtn.style.background = 'rgba(125,125,125,0.22)';
-    });
-    visitBtn.addEventListener('mouseleave', function () {
-      visitBtn.style.background = 'rgba(125,125,125,0.12)';
-    });
-    visitBtn.addEventListener('click', function (e) {
+    
+    elVisitBtn.addEventListener('mouseenter', function () { elVisitBtn.style.background = 'rgba(125,125,125,0.22)'; });
+    elVisitBtn.addEventListener('mouseleave', function () { elVisitBtn.style.background = 'rgba(125,125,125,0.12)'; });
+    elVisitBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       handlePromoVisit(e);
     });
@@ -406,9 +424,14 @@ export default function handler(req, res) {
     closeBtn.style.cssText =
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
       'color:currentColor;opacity:0.6;cursor:pointer;padding:0 4px;line-height:1;';
+    
     closeBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       isDismissed = true;
+      
+      // Stop continuous ad rotation
+      if (rotationTimer) clearInterval(rotationTimer);
+      
       if (layoutObserver) {
         layoutObserver.disconnect();
         layoutObserver = null;
@@ -428,7 +451,7 @@ export default function handler(req, res) {
     bar.appendChild(brand);
     bar.appendChild(divider);
     bar.appendChild(profile);
-    bar.appendChild(visitBtn);
+    bar.appendChild(elVisitBtn);
     bar.appendChild(closeBtn);
 
     container.appendChild(bar);
@@ -436,7 +459,7 @@ export default function handler(req, res) {
     shadow.appendChild(container);
     body.appendChild(root);
 
-    // FIX 4: CLS - Smooth layout adjustments for the host page
+    // Apply layout shifts smoothly
     if (body) {
       var existingPad = parseInt(window.getComputedStyle(body).paddingTop) || 0;
       body.style.transition = body.style.transition ? body.style.transition + ', padding-top 0.4s ease' : 'padding-top 0.4s ease';
@@ -447,16 +470,14 @@ export default function handler(req, res) {
       html.style.scrollPaddingTop = BAR_HEIGHT + 'px';
     }
 
-    // Force a DOM reflow, then apply the transform to slide the bar in smoothly
-    void root.offsetWidth;
-    root.style.transform = 'translateY(0)';
+    void root.offsetWidth; // Force reflow
+    root.style.transform = 'translateY(0)'; // Slide in smoothly
 
-    // FIX 1: Wrapping the MutationObserver callback in the debounce function
+    // Observer setup
     try {
       layoutObserver = new MutationObserver(debounce(function () {
         if (isDismissed) return;
         sweepFixedElements(root);
-        
         var newTheme = detectTheme();
         if (newTheme !== currentTheme) {
           currentTheme = newTheme;
@@ -467,10 +488,7 @@ export default function handler(req, res) {
       var targetNode = body || html;
       if (targetNode) {
         layoutObserver.observe(targetNode, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ['style', 'class', 'data-theme']
+          childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'data-theme']
         });
       }
     } catch (e) {}
