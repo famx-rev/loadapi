@@ -6,7 +6,7 @@ import leaderboardRoute from './leaderboard.js';
 import myStartupsRoute from './my-startups.js';
 import startupsRoute from './startups.js';
 import widgetLoaderRoute from './widget/loader.js';
-
+import eventsRoute from './events.js';
 const app = express();
 
 app.use(express.json());
@@ -19,7 +19,7 @@ app.use((req, res, next) => {
 });
 
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', message: 'API is working' });
+  res.json({ status: 'ok', message: 'API  is working' });
 });
 
 app.get('/api/serve', serveRoute);
@@ -27,7 +27,6 @@ app.post('/api/track', trackRoute);
 app.get('/api/analytics', analyticsRoute);
 app.get('/api/leaderboard', leaderboardRoute);
 app.get('/api/my-startups', myStartupsRoute);
-app.get('/api/events', eventsRoute);
 
 app.get('/api/startups/:id', startupsRoute.getOne);
 app.post('/api/startups', startupsRoute.create);
