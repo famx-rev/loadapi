@@ -1,4 +1,3 @@
-// File: pages/api/events.js
 import pool from './db.js';
 import { json, errorResponse, requireUser } from './_helpers.js';
 
@@ -18,17 +17,15 @@ export default async function handler(req, res) {
   if (startupRows.length === 0) return json(res, { events: [] });
   if (startupRows[0].owner_id !== userId) return errorResponse(res, 'Not authorized', 403);
 
-  // Safely parse the limit to a strict integer
   const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
 
   try {
-    // FIX: Inject ${limit} directly instead of using 'LIMIT ?' to prevent MySQL syntax crashes
-    const [rows] = await pool.execute(
+    const [rows] = await pool.query(
       `SELECT id, startup_id, event_data, created_at
        FROM events WHERE startup_id = ?
        ORDER BY created_at DESC
        LIMIT ${limit}`,
-      [startupId]
+      [startupId],
     );
 
     const events = rows.map((r) => {
