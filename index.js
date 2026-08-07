@@ -27,6 +27,7 @@ app.post('/api/track', trackRoute);
 app.get('/api/analytics', analyticsRoute);
 app.get('/api/leaderboard', leaderboardRoute);
 app.get('/api/my-startups', myStartupsRoute);
+app.get('/api/events', eventsRoute);
 
 app.get('/api/startups/:id', startupsRoute.getOne);
 app.post('/api/startups', startupsRoute.create);
