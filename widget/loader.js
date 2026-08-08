@@ -251,7 +251,7 @@ export default function handler(req, res) {
   fetchBatch(true);
   
   // Rotate the ad every 30 seconds (no network requests needed for most of these)
-  rotationTimer = setInterval(rotateAd, 30000);
+  rotationTimer = setInterval(rotateAd, 8000);
   // --- END OF BATCH ENGINE ---
 
   function updateBarContent(promotion) {
