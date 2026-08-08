@@ -1,12 +1,9 @@
 // File: pages/api/events.js
 import pool from './db.js';
-import { json, errorResponse, requireUser } from './_helpers.js';
+import { json, errorResponse } from './_helpers.js'; // Removed requireUser
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return errorResponse(res, 'Method not allowed', 405);
-
-  const userId = await requireUser(req, res);
-  if (!userId) return;
 
   const startupId = req.query.id;
   if (!startupId) return errorResponse(res, 'Missing startup id', 400);
@@ -14,8 +11,9 @@ export default async function handler(req, res) {
   // Read the "type" parameter from the URL to decide what data to fetch
   const requestType = req.query.type; 
 
+  // Check if the startup exists (removed the owner_id check)
   const [startupRows] = await pool.execute(
-    'SELECT id, owner_id FROM startups WHERE id = ?',
+    'SELECT id FROM startups WHERE id = ?',
     [startupId],
   );
   
@@ -23,8 +21,6 @@ export default async function handler(req, res) {
   if (startupRows.length === 0) {
     return json(res, []);
   }
-  
-  if (startupRows[0].owner_id !== userId) return errorResponse(res, 'Not authorized', 403);
 
   const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
 
@@ -53,7 +49,7 @@ export default async function handler(req, res) {
     }
     // 3. IF the type is missing or invalid
     else {
-      return errorResponse(res, 'Invalid request type. Must specify "get" or "gave".', 400);
+      return errorResponse(res, 'Invalid request type. Must specify "got" or "gave".', 400);
     }
 
     const events = rows.map((r) => {
