@@ -6,7 +6,7 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect
+ * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
  */
 (function () {
   'use strict';
@@ -30,6 +30,10 @@ export default function handler(req, res) {
   var currentPromoId = null;
   var currentPromoUrl = '#';
   var rotationTimer = null;
+
+  // NEW: Batch Prefetching Variables
+  var promoQueue = [];
+  var isFetching = false;
 
   var elProfileName, elProfileTag, elFaviconImg, elAvatarContainer, elVisitBtn;
 
@@ -188,8 +192,32 @@ export default function handler(req, res) {
 
   var serveUrl = apiBase + '/api/serve?startup_id=' + encodeURIComponent(startupId);
 
-  function fetchAndRotate() {
+  // --- REPLACED: Batch Prefetching Engine Starts Here ---
+  function rotateAd() {
     if (isDismissed) return;
+
+    if (promoQueue.length > 0) {
+      var promoToShow = promoQueue.shift(); // Pull the next ad from memory
+      
+      if (!document.getElementById('loadbar-root')) {
+        buildBarDOM();
+      }
+      
+      updateBarContent(promoToShow);
+
+      // If we just used the last ad in the queue, silently fetch the next batch
+      if (promoQueue.length === 0) {
+        fetchBatch(false); 
+      }
+    } else {
+      // If the queue is totally empty, fetch and rotate immediately
+      fetchBatch(true);
+    }
+  }
+
+  function fetchBatch(andRotateImmediately) {
+    if (isDismissed || isFetching) return;
+    isFetching = true;
     
     var bustCacheUrl = serveUrl + '&_cb=' + new Date().getTime();
     
@@ -199,23 +227,32 @@ export default function handler(req, res) {
         return r.json();
       })
       .then(function (data) {
+        isFetching = false;
         if (!data) return;
-        var promoToShow = data.promotion || data.startup;
-        if (!promoToShow) return;
         
-        if (!document.getElementById('loadbar-root')) {
-          buildBarDOM();
+        // This accepts the new {promotions: [...]} array from your updated backend,
+        // or falls back safely to the single {promotion: ...} format just in case.
+        var list = data.promotions || (data.promotion ? [data.promotion] : []);
+        
+        if (list.length > 0) {
+          promoQueue = promoQueue.concat(list);
+          if (andRotateImmediately) {
+            rotateAd();
+          }
         }
-        
-        updateBarContent(promoToShow);
       })
       .catch(function (e) {
-        console.warn('[Loadbar] Could not rotate ad:', e.message || e);
+        isFetching = false;
+        console.warn('[Loadbar] Could not fetch batch:', e.message || e);
       });
   }
 
-  fetchAndRotate();
-  rotationTimer = setInterval(fetchAndRotate, 30000);
+  // Kick off the initial fetch
+  fetchBatch(true);
+  
+  // Rotate the ad every 30 seconds (no network requests needed for most of these)
+  rotationTimer = setInterval(rotateAd, 30000);
+  // --- END OF BATCH ENGINE ---
 
   function updateBarContent(promotion) {
     var newPromoId = promotion.id || promotion._id || promotion.startup_id || null;
@@ -247,8 +284,8 @@ export default function handler(req, res) {
       };
     }
 
-    // FIX: Removed the automatic track('impression') from here entirely.
-    // Now, impressions will ONLY trigger when the user actually hovers over the bar.
+    // Notice there is NO automatic track('impression') here. 
+    // It remains exactly where you put it: on mouse hover.
   }
 
   function buildBarDOM() {
@@ -319,18 +356,15 @@ export default function handler(req, res) {
       }
       track('click', {
         device: detectDevice(),
-        // Always tracks the click for the ad CURRENTLY being shown
         promoted_id: currentPromoId 
       });
     }
 
     bar.addEventListener('click', handlePromoVisit);
 
-    // This is the ONLY place an impression is logged now!
     bar.addEventListener('mouseenter', function () {
       track('impression', {
         device: detectDevice(),
-        // Always logs the impression for the ad CURRENTLY being shown
         promoted_id: currentPromoId, 
         hovered: true
       });
