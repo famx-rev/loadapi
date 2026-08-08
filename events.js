@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   const startupId = req.query.id;
   if (!startupId) return errorResponse(res, 'Missing startup id', 400);
 
-  // NEW: Read the "type" parameter from the URL to decide what data to fetch
+  // Read the "type" parameter from the URL to decide what data to fetch
   const requestType = req.query.type; 
 
   const [startupRows] = await pool.execute(
@@ -19,9 +19,9 @@ export default async function handler(req, res) {
     [startupId],
   );
   
+  // Return a pure empty array if no startup is found
   if (startupRows.length === 0) {
-    if (requestType === 'gave') return json(res, { trafficGiven: [] });
-    return json(res, { trafficReceived: [] });
+    return json(res, []);
   }
   
   if (startupRows[0].owner_id !== userId) return errorResponse(res, 'Not authorized', 403);
@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     // IF the dashboard specifically asks for "gave", run the Host query
     if (requestType === 'gave') {
       [rows] = await pool.query(
-        `SELECT id, startup_id, promoted_id, event_data, created_at
+        `SELECT startup_id, promoted_id, event_data
          FROM events WHERE startup_id = ?
          ORDER BY created_at DESC
          LIMIT ${limit}`,
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     // OTHERWISE, run the Default (Received) query
     else {
       [rows] = await pool.query(
-        `SELECT id, startup_id, promoted_id, event_data, created_at
+        `SELECT startup_id, promoted_id, event_data
          FROM events WHERE promoted_id = ?
          ORDER BY created_at DESC
          LIMIT ${limit}`,
@@ -59,21 +59,17 @@ export default async function handler(req, res) {
       } catch {
         data = {};
       }
+      
+      // Return only the exact data you want, stripping id and created_at
       return {
-        id: r.id,
         startup_id: r.startup_id,
         promoted_id: r.promoted_id,
         event_data: data,
-        created_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
       };
     });
 
-    // Return the correct JSON key based on what was requested
-    if (requestType === 'gave') {
-      return json(res, { trafficGiven: events });
-    } else {
-      return json(res, { trafficReceived: events });
-    }
+    // Return the pure array directly, with no wrapper keys
+    return json(res, events);
 
   } catch (err) {
     console.error('Events load error:', err);
