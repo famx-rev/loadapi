@@ -25,13 +25,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid request body' });
     }
 
-    // 3. Read startup_id from the event data sent by the frontend widget
+    // 3. Read startup_id (Host) and promoted_id (Advertiser) from the widget payload
     const startupId = body.startup_id;
-    if (!startupId) {
-      return res.status(400).json({ error: 'startup_id is required' });
+    const promotedId = body.promoted_id;
+
+    if (!startupId || !promotedId) {
+      return res.status(400).json({ error: 'startup_id and promoted_id are required' });
     }
 
-    // 4. Validate that the startup actually exists in your DB (Optional but recommended)
+    // 4. Validate that the host startup actually exists in your DB
     const [rows] = await pool.execute('SELECT id FROM startups WHERE id = ?', [startupId]);
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Startup not found' });
@@ -47,11 +49,11 @@ export default async function handler(req, res) {
       recordedVia: 'widget' 
     };
 
-    // 7. Insert into the simplified events table
-    // Table columns: id (auto), startup_id, event_data, created_at
+    // 7. Insert into the newly structured events table
+    // Table columns: id (auto), startup_id, promoted_id, event_data, created_at
     await pool.execute(
-      'INSERT INTO events (startup_id, event_data, created_at) VALUES (?, ?, NOW())',
-      [startupId, JSON.stringify(eventData)]
+      'INSERT INTO events (startup_id, promoted_id, event_data, created_at) VALUES (?, ?, ?, NOW())',
+      [startupId, promotedId, JSON.stringify(eventData)]
     );
 
     // 8. Return the exact success response
