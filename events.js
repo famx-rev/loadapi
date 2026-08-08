@@ -31,7 +31,7 @@ export default async function handler(req, res) {
   try {
     let rows = [];
 
-    // IF the dashboard specifically asks for "gave", run the Host query
+    // 1. IF the dashboard asks for "gave"
     if (requestType === 'gave') {
       [rows] = await pool.query(
         `SELECT startup_id, promoted_id, event_data
@@ -41,8 +41,8 @@ export default async function handler(req, res) {
         [startupId],
       );
     } 
-    // OTHERWISE, run the Default (Received) query
-    else {
+    // 2. IF the dashboard asks for "get"
+    else if (requestType === 'get') {
       [rows] = await pool.query(
         `SELECT startup_id, promoted_id, event_data
          FROM events WHERE promoted_id = ?
@@ -50,6 +50,10 @@ export default async function handler(req, res) {
          LIMIT ${limit}`,
         [startupId],
       );
+    }
+    // 3. IF the type is missing or invalid
+    else {
+      return errorResponse(res, 'Invalid request type. Must specify "get" or "gave".', 400);
     }
 
     const events = rows.map((r) => {
