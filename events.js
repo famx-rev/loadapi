@@ -41,8 +41,8 @@ export default async function handler(req, res) {
         [startupId],
       );
     } 
-    // 2. IF the dashboard asks for "get"
-    else if (requestType === 'get') {
+    // 2. IF the dashboard asks for "got"
+    else if (requestType === 'got') {
       [rows] = await pool.query(
         `SELECT startup_id, promoted_id, event_data
          FROM events WHERE promoted_id = ?
