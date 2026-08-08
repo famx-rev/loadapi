@@ -29,38 +29,35 @@ export default async function handler(req, res) {
 
     // 1. Refresh the cache only if it's empty or older than 60 seconds
     if (!cachedStartups || now - cacheTimestamp > CACHE_TTL_MS) {
-      
-      // FIX: Removed "WHERE verified = 1" so ALL startups are eligible to be shown!
       const [rows] = await pool.execute(
         `SELECT id, name, tagline, url, domain, accent_from, accent_to 
          FROM startups 
          ORDER BY RAND() 
          LIMIT 100`
       );
-      
       cachedStartups = rows;
       cacheTimestamp = now;
     }
 
-    // 2. Filter out the host's own startup so they don't serve their own ad
+    // 2. Filter out the host's own startup
     const eligibleStartups = cachedStartups.filter(s => s.id !== hostStartupId);
 
     if (eligibleStartups.length === 0) {
       return res.status(404).json({ error: 'No eligible startups available' });
     }
 
-    // 3. Pick a random ad from the eligible cached pool
-    const randomIndex = Math.floor(Math.random() * eligibleStartups.length);
-    const selectedStartup = eligibleStartups[randomIndex];
+    // 3. Shuffle the eligible startups and take a batch of 5
+    const shuffled = [...eligibleStartups].sort(() => 0.5 - Math.random());
+    const selectedBatch = shuffled.slice(0, 5);
 
-    // 4. Return in the exact JSON format your frontend loader.js expects
+    // 4. Return an array of promotions
     res.setHeader('Cache-Control', 'no-store, max-age=0');
     return res.status(200).json({
-      promotion: selectedStartup
+      promotions: selectedBatch
     });
 
   } catch (error) {
     console.error('API /serve Error:', error.message);
-    return res.status(500).json({ error: 'Failed to serve promotion' });
+    return res.status(500).json({ error: 'Failed to serve promotions' });
   }
 }
