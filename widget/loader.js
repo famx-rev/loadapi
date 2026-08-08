@@ -34,6 +34,7 @@ export default function handler(req, res) {
   // NEW: Batch Prefetching Variables
   var promoQueue = [];
   var isFetching = false;
+  var trackedHoverPromoId = null; // Added lock to prevent hover spam
 
   var elProfileName, elProfileTag, elFaviconImg, elAvatarContainer, elVisitBtn;
 
@@ -284,8 +285,11 @@ export default function handler(req, res) {
       };
     }
 
-    // Notice there is NO automatic track('impression') here. 
-    // It remains exactly where you put it: on mouse hover.
+    // 🔥 Added real impression tracking here exactly once per ad load
+    track('impression', {
+      device: detectDevice(),
+      promoted_id: currentPromoId
+    });
   }
 
   function buildBarDOM() {
@@ -363,11 +367,15 @@ export default function handler(req, res) {
     bar.addEventListener('click', handlePromoVisit);
 
     bar.addEventListener('mouseenter', function () {
-      track('impression', {
-        device: detectDevice(),
-        promoted_id: currentPromoId, 
-        hovered: true
-      });
+      // 🔥 Added lock so 'hover' tracking only fires once per ad
+      if (trackedHoverPromoId !== currentPromoId) {
+        trackedHoverPromoId = currentPromoId;
+        track('hover', {
+          device: detectDevice(),
+          promoted_id: currentPromoId, 
+          hovered: true
+        });
+      }
     });
 
     var brand = document.createElement('div');
