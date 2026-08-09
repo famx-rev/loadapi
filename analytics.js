@@ -1,4 +1,3 @@
-// File: pages/api/analytics.js (or similar)
 import pool from './db.js';
 import { json, errorResponse, requireUser } from './_helpers.js';
 
@@ -19,61 +18,77 @@ export default async function handler(req, res) {
   if (startupRows[0].owner_id !== userId) return errorResponse(res, 'Not authorized', 403);
 
   try {
-    // FIX 1: Extract eventName for impressions and clicks
-    const [impressionRows] = await pool.execute(
-      "SELECT COUNT(*) as count FROM events WHERE startup_id = ? AND event_data->>'$.eventName' = ?",
-      [startupId, 'impression'],
-    );
-    const [clickRows] = await pool.execute(
-      "SELECT COUNT(*) as count FROM events WHERE startup_id = ? AND event_data->>'$.eventName' = ?",
-      [startupId, 'click'],
-    );
-    const impressionCount = impressionRows[0].count;
-    const clickCount = clickRows[0].count;
-    const ctr = impressionCount > 0 ? (clickCount / impressionCount) * 100 : 0;
-
-    // FIX 2: Extract eventName dynamically for the daily grouping
-    const [dailyRows] = await pool.execute(
-      `SELECT DATE(created_at) as day, event_data->>'$.eventName' as kind, COUNT(*) as count
-       FROM events WHERE startup_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
-       GROUP BY DATE(created_at), kind`,
+    // Fetch raw rows and parse JSON in JS — same pattern as events.js
+    const [rows] = await pool.execute(
+      `SELECT event_data, created_at
+       FROM events WHERE promoted_id = ?
+       ORDER BY created_at DESC
+       LIMIT 5000`,
       [startupId],
     );
-    
+
+    if (rows.length === 0) {
+      return json(res, {
+        analytics: {
+          totals: { impressions: 0, clicks: 0, hovers: 0, ctr: 0 },
+          daily: [],
+          topCountries: [],
+          deviceBreakdown: [],
+          topReferrers: [],
+          activity: [],
+        },
+      });
+    }
+
+    // Parse event_data in JavaScript (avoids MySQL JSON function issues)
+    const events = rows.map((r) => {
+      let data = {};
+      try {
+        data = typeof r.event_data === 'string' ? JSON.parse(r.event_data) : (r.event_data || {});
+      } catch {
+        data = {};
+      }
+      return {
+        ...data,
+        _created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at || ''),
+      };
+    });
+
+    // ---- Totals ----
+    let impressions = 0;
+    let clicks = 0;
+    let hovers = 0;
+    for (const e of events) {
+      if (e.eventName === 'impression') impressions++;
+      else if (e.eventName === 'click') clicks++;
+      if (e.hovered === true) hovers++;
+    }
+    const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+
+    // ---- Daily breakdown (last 14 days) ----
     const dayMap = new Map();
-    for (const r of dailyRows) {
-      const day = typeof r.day === 'object' && r.day instanceof Date
-        ? r.day.toISOString().slice(0, 10)
-        : String(r.day);
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    for (const e of events) {
+      const ts = e.timestamp || e._created_at;
+      if (!ts) continue;
+      const d = new Date(ts);
+      if (d < fourteenDaysAgo) continue;
+      const day = d.toISOString().slice(0, 10);
       const entry = dayMap.get(day) ?? { impressions: 0, clicks: 0 };
-      if (r.kind === 'impression') entry.impressions += r.count;
-      else entry.clicks += r.count;
+      if (e.eventName === 'impression') entry.impressions++;
+      else if (e.eventName === 'click') entry.clicks++;
       dayMap.set(day, entry);
     }
     const daily = Array.from(dayMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([day, v]) => ({ day, ...v }));
 
-    // FIX 3: Map all the old columns directly out of the JSON object
-    const [recentRows] = await pool.execute(
-      `SELECT 
-         event_data->>'$.country' as country, 
-         event_data->>'$.country_code' as country_code, 
-         event_data->>'$.city' as city, 
-         event_data->>'$.device' as device, 
-         event_data->>'$.referrer' as referrer, 
-         event_data->>'$.eventName' as kind, 
-         created_at
-       FROM events WHERE startup_id = ?
-       ORDER BY created_at DESC LIMIT 20`,
-      [startupId],
-    );
-
+    // ---- Top countries ----
     const countryMap = new Map();
-    for (const e of recentRows) {
+    for (const e of events) {
       if (!e.country) continue;
       const entry = countryMap.get(e.country) ?? { count: 0, code: e.country_code ?? '' };
-      entry.count += 1;
+      entry.count++;
       countryMap.set(e.country, entry);
     }
     const topCountries = Array.from(countryMap.entries())
@@ -81,43 +96,55 @@ export default async function handler(req, res) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
 
+    // ---- Device breakdown ----
     const deviceMap = new Map();
-    for (const e of recentRows) {
-      if (!e.device) continue;
-      deviceMap.set(e.device, (deviceMap.get(e.device) ?? 0) + 1);
+    for (const e of events) {
+      const dev = e.device || 'unknown';
+      deviceMap.set(dev, (deviceMap.get(dev) ?? 0) + 1);
     }
     const totalDevices = Array.from(deviceMap.values()).reduce((a, b) => a + b, 0);
     const deviceBreakdown = Array.from(deviceMap.entries())
       .map(([device, count]) => ({ device, count, pct: totalDevices > 0 ? (count / totalDevices) * 100 : 0 }))
       .sort((a, b) => b.count - a.count);
 
-    const referrerMap = new Map();
-    for (const e of recentRows) {
-      if (!e.referrer) continue;
-      referrerMap.set(e.referrer, (referrerMap.get(e.referrer) ?? 0) + 1);
+    // ---- Top referrers ----
+    const refMap = new Map();
+    for (const e of events) {
+      const ref = e.referrer || e.url || '';
+      let label = 'Direct';
+      if (ref) {
+        try {
+          label = new URL(ref).hostname;
+        } catch {
+          label = ref;
+        }
+      }
+      refMap.set(label, (refMap.get(label) ?? 0) + 1);
     }
-    const topReferrers = Array.from(referrerMap.entries())
+    const topReferrers = Array.from(refMap.entries())
       .map(([referrer, count]) => ({ referrer, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
-    const activity = recentRows
-      .filter((e) => e.kind === 'impression')
+    // ---- Recent activity (last 8 impressions) ----
+    const activity = events
+      .filter((e) => e.eventName === 'impression')
       .slice(0, 8)
       .map((e) => ({
-        country: e.country,
-        country_code: e.country_code,
-        city: e.city,
-        device: e.device,
-        referrer: e.referrer,
-        created_at: e.created_at instanceof Date ? e.created_at.toISOString() : e.created_at,
+        country: e.country || '',
+        country_code: e.country_code || '',
+        city: e.city || '',
+        device: e.device || '',
+        referrer: e.referrer || '',
+        created_at: e.timestamp || e._created_at,
       }));
 
     return json(res, {
       analytics: {
         totals: {
-          impressions: impressionCount,
-          clicks: clickCount,
+          impressions,
+          clicks,
+          hovers,
           ctr: Number(ctr.toFixed(2)),
         },
         daily,
