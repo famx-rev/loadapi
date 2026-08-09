@@ -1,8 +1,33 @@
 // File: pages/api/events.js
 import pool from './db.js';
-import { json, errorResponse } from './_helpers.js'; // Removed requireUser
+import { json, errorResponse, requireUser } from './_helpers.js';
 
 export default async function handler(req, res) {
+  // DELETE — wipe all events for a startup (owner only)
+  if (req.method === 'DELETE') {
+    const userId = await requireUser(req, res);
+    if (!userId) return;
+
+    const startupId = req.query.id;
+    if (!startupId) return errorResponse(res, 'Missing startup id', 400);
+
+    const [startupRows] = await pool.execute(
+      'SELECT id, owner_id FROM startups WHERE id = ?',
+      [startupId],
+    );
+    if (startupRows.length === 0) return errorResponse(res, 'Startup not found', 404);
+    if (startupRows[0].owner_id !== userId) return errorResponse(res, 'Not authorized', 403);
+
+    try {
+      // Delete events where this startup is the host (startup_id)
+      await pool.execute('DELETE FROM events WHERE startup_id = ?', [startupId]);
+      return json(res, { ok: true });
+    } catch (err) {
+      console.error('Events delete error:', err);
+      return errorResponse(res, 'Could not delete events', 500);
+    }
+  }
+
   if (req.method !== 'GET') return errorResponse(res, 'Method not allowed', 405);
 
   const startupId = req.query.id;
