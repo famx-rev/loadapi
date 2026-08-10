@@ -7,6 +7,7 @@ export default function handler(req, res) {
 
   const script = `/**
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
+ * Upgraded: Smart DOM Shifting & Layout Protection
  */
 (function () {
   'use strict';
@@ -31,10 +32,9 @@ export default function handler(req, res) {
   var currentPromoUrl = '#';
   var rotationTimer = null;
 
-  // NEW: Batch Prefetching Variables
   var promoQueue = [];
   var isFetching = false;
-  var trackedHoverPromoId = null; // Added lock to prevent hover spam
+  var trackedHoverPromoId = null;
 
   var elProfileName, elProfileTag, elFaviconImg, elAvatarContainer, elVisitBtn;
 
@@ -136,9 +136,14 @@ export default function handler(req, res) {
     return 'desktop';
   }
 
+  // --- SMART DOM SHIFTING LOGIC ---
   function shiftFixedElement(el, root) {
     try {
       if (isDismissed || !el || el.nodeType !== 1) return;
+      
+      // 1. Opt-out attribute for host developers
+      if (el.hasAttribute('data-loadbar-ignore')) return; 
+      
       if (el === root || (root && root.contains && root.contains(el))) return;
       
       var cs = window.getComputedStyle(el);
@@ -161,7 +166,16 @@ export default function handler(req, res) {
         el.dataset.loadbarOriginalTransition = el.style.transition || '';
       }
       
-      el.style.transition = el.dataset.loadbarOriginalTransition ? el.dataset.loadbarOriginalTransition + ', top 0.4s ease' : 'top 0.4s ease';
+      // 2. Height Compensation: Prevents 100vh elements from overflowing the bottom
+      var heightRaw = cs.height;
+      if (heightRaw === window.innerHeight + 'px' || el.style.height === '100vh' || el.style.height === '100%') {
+          if (typeof el.dataset.loadbarOriginalHeight === 'undefined') {
+              el.dataset.loadbarOriginalHeight = el.style.height || '';
+          }
+          el.style.height = 'calc(100vh - ' + BAR_HEIGHT + 'px)';
+      }
+      
+      el.style.transition = el.dataset.loadbarOriginalTransition ? el.dataset.loadbarOriginalTransition + ', top 0.4s ease, height 0.4s ease' : 'top 0.4s ease, height 0.4s ease';
       el.style.top = (originalPx + BAR_HEIGHT) + 'px';
       el.dataset.loadbarShifted = '1';
     } catch (e) {}
@@ -184,6 +198,13 @@ export default function handler(req, res) {
         var el = nodes[i];
         el.style.top = el.dataset.loadbarOriginalTop || '';
         el.style.transition = el.dataset.loadbarOriginalTransition || '';
+        
+        // Restore original height
+        if (typeof el.dataset.loadbarOriginalHeight !== 'undefined') {
+            el.style.height = el.dataset.loadbarOriginalHeight;
+            delete el.dataset.loadbarOriginalHeight;
+        }
+
         delete el.dataset.loadbarOriginalTop;
         delete el.dataset.loadbarOriginalTransition;
         delete el.dataset.loadbarShifted;
@@ -193,12 +214,11 @@ export default function handler(req, res) {
 
   var serveUrl = apiBase + '/api/serve?startup_id=' + encodeURIComponent(startupId);
 
-  // --- REPLACED: Batch Prefetching Engine Starts Here ---
   function rotateAd() {
     if (isDismissed) return;
 
     if (promoQueue.length > 0) {
-      var promoToShow = promoQueue.shift(); // Pull the next ad from memory
+      var promoToShow = promoQueue.shift(); 
       
       if (!document.getElementById('loadbar-root')) {
         buildBarDOM();
@@ -206,12 +226,10 @@ export default function handler(req, res) {
       
       updateBarContent(promoToShow);
 
-      // If we just used the last ad in the queue, silently fetch the next batch
       if (promoQueue.length === 0) {
         fetchBatch(false); 
       }
     } else {
-      // If the queue is totally empty, fetch and rotate immediately
       fetchBatch(true);
     }
   }
@@ -231,8 +249,6 @@ export default function handler(req, res) {
         isFetching = false;
         if (!data) return;
         
-        // This accepts the new {promotions: [...]} array from your updated backend,
-        // or falls back safely to the single {promotion: ...} format just in case.
         var list = data.promotions || (data.promotion ? [data.promotion] : []);
         
         if (list.length > 0) {
@@ -248,12 +264,8 @@ export default function handler(req, res) {
       });
   }
 
-  // Kick off the initial fetch
   fetchBatch(true);
-  
-  // Rotate the ad every 30 seconds (no network requests needed for most of these)
   rotationTimer = setInterval(rotateAd, 8000);
-  // --- END OF BATCH ENGINE ---
 
   function updateBarContent(promotion) {
     var newPromoId = promotion.id || promotion._id || promotion.startup_id || null;
@@ -285,7 +297,6 @@ export default function handler(req, res) {
       };
     }
 
-    // 🔥 Added real impression tracking here exactly once per ad load
     track('impression', {
       device: detectDevice(),
       promoted_id: currentPromoId
@@ -301,6 +312,11 @@ export default function handler(req, res) {
     var originalScrollPaddingTop = html ? html.style.scrollPaddingTop || '' : '';
     var originalBodyTransition = body ? body.style.transition || '' : '';
     var originalHtmlTransition = html ? html.style.transition || '' : '';
+
+    // Inject a CSS variable into the root element for modern sites
+    if (html) {
+      html.style.setProperty('--loadbar-height', BAR_HEIGHT + 'px');
+    }
 
     var root = document.createElement('div');
     root.id = 'loadbar-root';
@@ -333,9 +349,7 @@ export default function handler(req, res) {
           ? 'background:rgba(24,24,27,0.92);border-bottom:1px solid rgba(255,255,255,0.1);color:#f3f4f6;'
           : 'background:rgba(255,255,255,0.92);border-bottom:1px solid rgba(0,0,0,0.08);color:#111827;');
 
-      if (elAvatarContainer) {
-        elAvatarContainer.style.background = 'transparent';
-      }
+      if (elAvatarContainer) elAvatarContainer.style.background = 'transparent';
 
       if (elFaviconImg) {
         elFaviconImg.style.cssText =
@@ -355,26 +369,16 @@ export default function handler(req, res) {
     }
 
     function handlePromoVisit(e) {
-      if (currentPromoUrl !== '#') {
-        window.open(currentPromoUrl, '_blank', 'noopener,noreferrer');
-      }
-      track('click', {
-        device: detectDevice(),
-        promoted_id: currentPromoId 
-      });
+      if (currentPromoUrl !== '#') window.open(currentPromoUrl, '_blank', 'noopener,noreferrer');
+      track('click', { device: detectDevice(), promoted_id: currentPromoId });
     }
 
     bar.addEventListener('click', handlePromoVisit);
 
     bar.addEventListener('mouseenter', function () {
-      // 🔥 Added lock so 'hover' tracking only fires once per ad
       if (trackedHoverPromoId !== currentPromoId) {
         trackedHoverPromoId = currentPromoId;
-        track('hover', {
-          device: detectDevice(),
-          promoted_id: currentPromoId, 
-          hovered: true
-        });
+        track('hover', { device: detectDevice(), promoted_id: currentPromoId, hovered: true });
       }
     });
 
@@ -446,7 +450,7 @@ export default function handler(req, res) {
     profile.appendChild(profileText);
 
     elVisitBtn.target = '_blank';
-    elVisitBtn.textContent = 'Visit →';
+    elVisitBtn.textContent = 'Visit \u2192'; // Using Unicode for arrow
     elVisitBtn.style.cssText =
       'display:inline-flex;align-items:center;gap:4px;flex-shrink:0;' +
       'padding:4px 12px;border-radius:999px;font-size:11px;font-weight:500;' +
@@ -461,7 +465,7 @@ export default function handler(req, res) {
     });
 
     var closeBtn = document.createElement('button');
-    closeBtn.textContent = '\u00d7';
+    closeBtn.textContent = '\u00d7'; // Unicode '×'
     closeBtn.setAttribute('aria-label', 'Close bar');
     closeBtn.style.cssText =
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
@@ -478,6 +482,10 @@ export default function handler(req, res) {
         layoutObserver = null;
       }
       root.remove();
+      
+      // Cleanup CSS Variable
+      if (html) html.style.removeProperty('--loadbar-height');
+
       if (body) {
         body.style.paddingTop = originalBodyPaddingTop;
         body.style.transition = originalBodyTransition;
@@ -540,7 +548,7 @@ export default function handler(req, res) {
 
     sweepFixedElements(root);
   }
-})();`;
+})();\`;
 
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=300');
