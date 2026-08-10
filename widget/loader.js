@@ -136,12 +136,10 @@ export default function handler(req, res) {
     return 'desktop';
   }
 
-  // --- SMART DOM SHIFTING LOGIC ---
   function shiftFixedElement(el, root) {
     try {
       if (isDismissed || !el || el.nodeType !== 1) return;
       
-      // 1. Opt-out attribute for host developers
       if (el.hasAttribute('data-loadbar-ignore')) return; 
       
       if (el === root || (root && root.contains && root.contains(el))) return;
@@ -166,7 +164,6 @@ export default function handler(req, res) {
         el.dataset.loadbarOriginalTransition = el.style.transition || '';
       }
       
-      // 2. Height Compensation: Prevents 100vh elements from overflowing the bottom
       var heightRaw = cs.height;
       if (heightRaw === window.innerHeight + 'px' || el.style.height === '100vh' || el.style.height === '100%') {
           if (typeof el.dataset.loadbarOriginalHeight === 'undefined') {
@@ -199,7 +196,6 @@ export default function handler(req, res) {
         el.style.top = el.dataset.loadbarOriginalTop || '';
         el.style.transition = el.dataset.loadbarOriginalTransition || '';
         
-        // Restore original height
         if (typeof el.dataset.loadbarOriginalHeight !== 'undefined') {
             el.style.height = el.dataset.loadbarOriginalHeight;
             delete el.dataset.loadbarOriginalHeight;
@@ -313,7 +309,6 @@ export default function handler(req, res) {
     var originalBodyTransition = body ? body.style.transition || '' : '';
     var originalHtmlTransition = html ? html.style.transition || '' : '';
 
-    // Inject a CSS variable into the root element for modern sites
     if (html) {
       html.style.setProperty('--loadbar-height', BAR_HEIGHT + 'px');
     }
@@ -415,7 +410,7 @@ export default function handler(req, res) {
     popover.innerHTML =
       '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Founder-to-founder growth</div>' +
       '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup&#39;s products for free mutual traffic. No ads, no cost.</div>' +
-      '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free &rarr;</a>';
+      '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free \u2192</a>';
 
     popover.addEventListener('click', function(e) { e.stopPropagation(); });
     document.addEventListener('click', function(e) {
@@ -450,7 +445,7 @@ export default function handler(req, res) {
     profile.appendChild(profileText);
 
     elVisitBtn.target = '_blank';
-    elVisitBtn.textContent = 'Visit \u2192'; // Using Unicode for arrow
+    elVisitBtn.textContent = 'Visit \u2192'; 
     elVisitBtn.style.cssText =
       'display:inline-flex;align-items:center;gap:4px;flex-shrink:0;' +
       'padding:4px 12px;border-radius:999px;font-size:11px;font-weight:500;' +
@@ -465,7 +460,7 @@ export default function handler(req, res) {
     });
 
     var closeBtn = document.createElement('button');
-    closeBtn.textContent = '\u00d7'; // Unicode '×'
+    closeBtn.textContent = '\u00d7'; 
     closeBtn.setAttribute('aria-label', 'Close bar');
     closeBtn.style.cssText =
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
@@ -483,7 +478,6 @@ export default function handler(req, res) {
       }
       root.remove();
       
-      // Cleanup CSS Variable
       if (html) html.style.removeProperty('--loadbar-height');
 
       if (body) {
@@ -548,7 +542,7 @@ export default function handler(req, res) {
 
     sweepFixedElements(root);
   }
-})();\`;
+})();`;
 
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=300');
