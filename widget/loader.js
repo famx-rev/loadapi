@@ -7,7 +7,7 @@ export default function handler(req, res) {
 
   const script = `/**
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
- * Upgraded: Smart DOM Shifting & Layout Protection
+ * Upgraded: Smart DOM Shifting & Layout Protection (Sticky Elements Ignored)
  */
 (function () {
   'use strict';
@@ -140,12 +140,15 @@ export default function handler(req, res) {
     try {
       if (isDismissed || !el || el.nodeType !== 1) return;
       
+      // 1. Escape hatch for host developers
       if (el.hasAttribute('data-loadbar-ignore')) return; 
       
       if (el === root || (root && root.contains && root.contains(el))) return;
       
       var cs = window.getComputedStyle(el);
-      if (cs.position !== 'fixed' && cs.position !== 'sticky') return;
+      
+      // 2. ONLY target fixed elements. Ignore sticky to prevent dashboard layout crashes.
+      if (cs.position !== 'fixed') return;
 
       var topRaw = cs.top;
       if (!topRaw || topRaw === 'auto') return;
@@ -164,6 +167,7 @@ export default function handler(req, res) {
         el.dataset.loadbarOriginalTransition = el.style.transition || '';
       }
       
+      // 3. Height Compensation
       var heightRaw = cs.height;
       if (heightRaw === window.innerHeight + 'px' || el.style.height === '100vh' || el.style.height === '100%') {
           if (typeof el.dataset.loadbarOriginalHeight === 'undefined') {
