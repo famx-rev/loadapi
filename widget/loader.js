@@ -265,7 +265,44 @@ export default function handler(req, res) {
   }
 
   fetchBatch(true);
-  rotationTimer = setInterval(rotateAd, 8000);
+
+  // ==========================================
+  // ROTATION TOGGLE AND VISIBILITY LOGIC
+  // ==========================================
+  var ENABLE_VISIBILITY_PAUSE = true; // Set to false to use original constant rotation
+
+  function startRotation() {
+    if (isDismissed || rotationTimer) return;
+    rotationTimer = setInterval(rotateAd, 8000);
+  }
+
+  function stopRotation() {
+    if (rotationTimer) {
+      clearInterval(rotationTimer);
+      rotationTimer = null;
+    }
+  }
+
+  if (ENABLE_VISIBILITY_PAUSE) {
+    // Only start if the page is currently visible
+    if (!document.hidden) {
+      startRotation();
+    }
+    
+    // Listen for tab switching
+    document.addEventListener('visibilitychange', function() {
+      if (isDismissed) return;
+      if (document.hidden) {
+        stopRotation();
+      } else {
+        startRotation();
+      }
+    });
+  } else {
+    // Original behavior: run constantly
+    startRotation();
+  }
+  // ==========================================
 
   function updateBarContent(promotion) {
     var newPromoId = promotion.id || promotion._id || promotion.startup_id || null;
@@ -474,7 +511,7 @@ export default function handler(req, res) {
       e.stopPropagation();
       isDismissed = true;
       
-      if (rotationTimer) clearInterval(rotationTimer);
+      stopRotation(); // Cleanly clears the interval using the universal function
       
       if (layoutObserver) {
         layoutObserver.disconnect();
