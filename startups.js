@@ -32,7 +32,7 @@ export async function create(req, res) {
 }
 
 export async function getOne(req, res) {
-  const startupId = req.query?.id || req.params?.id;
+  const startupId = req.params.id;
   if (!startupId) return errorResponse(res, 'Missing startup id', 400);
 
   try {
@@ -48,7 +48,7 @@ export async function update(req, res) {
   const userId = await requireUser(req, res);
   if (!userId) return;
 
-  const startupId = req.query?.id || req.params?.id;
+  const startupId = req.params.id;
   if (!startupId) return errorResponse(res, 'Missing startup id', 400);
 
   const [existing] = await pool.execute(
@@ -84,7 +84,7 @@ export async function deleteStartup(req, res) {
   const userId = await requireUser(req, res);
   if (!userId) return;
 
-  const startupId = req.query?.id || req.params?.id;
+  const startupId = req.params.id;
   if (!startupId) return errorResponse(res, 'Missing startup id', 400);
 
   const [existing] = await pool.execute(
