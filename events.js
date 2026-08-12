@@ -19,8 +19,8 @@ export default async function handler(req, res) {
     if (startupRows[0].owner_id !== userId) return errorResponse(res, 'Not authorized', 403);
 
     try {
-      // Delete events where this startup is the host (startup_id)
-      await pool.execute('DELETE FROM events WHERE startup_id = ?', [startupId]);
+      // Delete events where this startup is the promoted_id
+      await pool.execute('DELETE FROM events WHERE promoted_id = ?', [startupId]);
       return json(res, { ok: true });
     } catch (err) {
       console.error('Events delete error:', err);
