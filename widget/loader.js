@@ -1,11 +1,11 @@
 // File: pages/api/widget/loader.js
 export default function handler(req, res) {
-  if (req.method !== 'GET') {
-    res.status(405).send('Method not allowed');
-    return;
-  }
+  try {
+    if (req.method !== 'GET') {
+      return res.status(405).send('Method not allowed');
+    }
 
-  const script = `/**
+    const script = `/**
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
  * Upgraded: Smart DOM Shifting & Layout Protection (Sticky Elements Ignored)
  */
@@ -435,11 +435,10 @@ export default function handler(req, res) {
     popover.innerHTML =
       '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Founder-to-founder growth</div>' +
       '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup&#39;s products for free mutual traffic. No ads, no cost.</div>' +
-      '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free \u2192</a>';
+      '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free \\u2192</a>';
 
     popover.addEventListener('click', function(e) { e.stopPropagation(); });
 
-    // Handle internal Shadow DOM clicks for popover dismissal
     shadow.addEventListener('click', function(e) {
       if (popover.style.display === 'block' && !popover.contains(e.target) && e.target !== infoBtn) {
         popover.style.display = 'none';
@@ -472,7 +471,7 @@ export default function handler(req, res) {
     profile.appendChild(profileText);
 
     elVisitBtn.target = '_blank';
-    elVisitBtn.textContent = 'Visit \u2192'; 
+    elVisitBtn.textContent = 'Visit \\u2192'; 
     elVisitBtn.style.cssText =
       'display:inline-flex;align-items:center;gap:4px;flex-shrink:0;' +
       'padding:4px 12px;border-radius:999px;font-size:11px;font-weight:500;' +
@@ -487,7 +486,7 @@ export default function handler(req, res) {
     });
 
     var closeBtn = document.createElement('button');
-    closeBtn.textContent = '\u00d7'; 
+    closeBtn.textContent = '\\u00d7'; 
     closeBtn.setAttribute('aria-label', 'Close bar');
     closeBtn.style.cssText =
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
@@ -577,9 +576,15 @@ export default function handler(req, res) {
   }
 })();`;
 
-  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=300');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('Access-Control-Allow-Origin', '*');
 
-  res.send(script);
-}
+    return res.status(200).send(script);
+  } catch (err) {
+    console.error('[Loadbar Loader API Error]:', err);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+}s
