@@ -1,10 +1,10 @@
 import mysql from 'mysql2/promise';
 
 const pool = mysql.createPool({
-  host: 'gateway01.ap-southeast-1.prod.aws.tidbcloud.com',
-  port: 4000,
-  user: '2EDLV5HMvmjV4ar.root',
-  password: 'bR0VNnodsJAj9i1J',
+  host: 'reva-reva.b.aivencloud.com',
+  port: 11703,
+  user: 'avnadmin',
+  password: 'AVNS_RXK6Q8dM3mKo9IHkuk7',
   database: 'test',
   waitForConnections: true,
   connectionLimit: 5,
