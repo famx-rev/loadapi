@@ -7,7 +7,7 @@ export default function handler(req, res) {
 
   const script = `/**
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
- * Upgraded: Smart DOM Shifting & Layout Protection (Sticky Elements Ignored)
+ * Upgraded: Smart DOM Shifting & Layout Protection (Sticky Elements Ignored )
  */
 (function () {
   'use strict';
