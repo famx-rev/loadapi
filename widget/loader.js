@@ -8,7 +8,7 @@ export default function handler(req, res) {
   const script = `/**
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
  * Upgraded: Smart DOM Shifting & Layout Protection (Sticky Elements Ignored)
- * Fix: Tracing 404 Status for Favicons to Trigger Auto-Letter Fallback
+ * Fix: Google Favicon API wrapped in CORS Proxy to accurately catch 404s
  */
 (function () {
   'use strict';
@@ -316,7 +316,12 @@ export default function handler(req, res) {
 
     if (elFaviconImg && elAvatarContainer) {
       var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
-      var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + cleanTargetUrl + '&size=128';
+      
+      // 1. Get the raw Google URL
+      var googleFaviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&url=' + encodeURIComponent(cleanTargetUrl) + '&size=128';
+      
+      // 2. Wrap it in a public CORS Proxy (AllOrigins) to bypass browser restrictions
+      var proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(googleFaviconUrl);
       
       // Reset layout on rotation
       elAvatarContainer.innerHTML = '';
@@ -324,31 +329,28 @@ export default function handler(req, res) {
       elAvatarContainer.style.display = 'flex';
       elAvatarContainer.style.background = 'transparent';
       
-      // Hide image initially while we check the status
+      // Hide image initially while we check the true status
       elFaviconImg.style.display = 'none';
       
-      // NEW FIX: Use fetch to trace the exact HTTP Status Code (bypassing Google's globe fallback)
-      fetch(faviconUrl)
+      // Use fetch on the PROXY url. Now we can actually see Google's 404!
+      fetch(proxyUrl)
         .then(function(res) {
-          // Explicitly trace the 404 code
-          if (res.status === 404 || !res.ok) {
-            throw new Error('Favicon not found (404)');
+          if (!res.ok || res.status === 404) {
+            throw new Error('Google Favicon 404 / Missing');
           }
           return res.blob();
         })
         .then(function(blob) {
-          // If valid (200), convert to URL and render
           var objectUrl = URL.createObjectURL(blob);
           elFaviconImg.src = objectUrl;
           elFaviconImg.style.display = 'block';
           
-          // Cleanup memory
           elFaviconImg.onload = function() {
             URL.revokeObjectURL(objectUrl);
           };
         })
         .catch(function(err) {
-          // Trigger Fallback system if 404 is caught (or if network fetch fails)
+          // The proxy successfully caught the 404! Trigger the Fallback system.
           elFaviconImg.style.display = 'none';
           
           if (ENABLE_AUTO_FAVICON_FALLBACK) {
