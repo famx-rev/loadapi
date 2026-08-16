@@ -316,7 +316,7 @@ export default function handler(req, res) {
 
     if (elFaviconImg && elAvatarContainer) {
       var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
-      var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&url=' + cleanTargetUrl + '&size=128';
+      var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + cleanTargetUrl + '&size=128';
       
       // Reset layout on rotation
       elAvatarContainer.innerHTML = '';
