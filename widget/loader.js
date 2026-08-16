@@ -25,6 +25,12 @@ export default function handler(req, res) {
 
   var apiBase = 'https://loadapi.vercel.app';
   var BAR_HEIGHT = 44;
+  
+  // ==========================================
+  // TOGGLE: True = Show Auto-Letter on 404 | False = Disable system completely
+  var ENABLE_AUTO_FAVICON_FALLBACK = true; 
+  // ==========================================
+
   var layoutObserver = null;
   var isDismissed = false;
 
@@ -140,14 +146,12 @@ export default function handler(req, res) {
     try {
       if (isDismissed || !el || el.nodeType !== 1) return;
       
-      // 1. Escape hatch for host developers
       if (el.hasAttribute('data-loadbar-ignore')) return; 
       
       if (el === root || (root && root.contains && root.contains(el))) return;
       
       var cs = window.getComputedStyle(el);
       
-      // 2. ONLY target fixed elements. Ignore sticky to prevent dashboard layout crashes.
       if (cs.position !== 'fixed') return;
 
       var topRaw = cs.top;
@@ -167,7 +171,6 @@ export default function handler(req, res) {
         el.dataset.loadbarOriginalTransition = el.style.transition || '';
       }
       
-      // 3. Height Compensation
       var heightRaw = cs.height;
       if (heightRaw === window.innerHeight + 'px' || el.style.height === '100vh' || el.style.height === '100%') {
           if (typeof el.dataset.loadbarOriginalHeight === 'undefined') {
@@ -284,12 +287,10 @@ export default function handler(req, res) {
   }
 
   if (ENABLE_VISIBILITY_PAUSE) {
-    // Only start if the page is currently visible
     if (!document.hidden) {
       startRotation();
     }
     
-    // Listen for tab switching
     document.addEventListener('visibilitychange', function() {
       if (isDismissed) return;
       if (document.hidden) {
@@ -299,7 +300,6 @@ export default function handler(req, res) {
       }
     });
   } else {
-    // Original behavior: run constantly
     startRotation();
   }
   // ==========================================
@@ -320,17 +320,31 @@ export default function handler(req, res) {
       var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
       var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + cleanTargetUrl + '&size=128';
       
+      // Reset layout on rotation (fixes bug if previous image had a 404 error)
+      elAvatarContainer.innerHTML = '';
+      elAvatarContainer.appendChild(elFaviconImg);
+      elAvatarContainer.style.display = 'flex';
+      elAvatarContainer.style.background = 'transparent';
+
       elFaviconImg.src = faviconUrl;
       elFaviconImg.style.display = 'block';
       
       elFaviconImg.onerror = function () {
         elFaviconImg.style.display = 'none';
-        elAvatarContainer.innerHTML = '';
-        var initialSpan = document.createElement('span');
-        initialSpan.textContent = (promotion.name || '?')[0].toUpperCase();
-        initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
-        elAvatarContainer.style.background = gradient(promotion);
-        elAvatarContainer.appendChild(initialSpan);
+        
+        if (ENABLE_AUTO_FAVICON_FALLBACK) {
+          var initialSpan = document.createElement('span');
+          // Grab first letter from name or domain, default to '?'
+          var fallbackLetter = promotion.name ? promotion.name[0] : (promotion.domain ? promotion.domain[0] : '?');
+          
+          initialSpan.textContent = fallbackLetter.toUpperCase();
+          initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
+          elAvatarContainer.style.background = gradient(promotion);
+          elAvatarContainer.appendChild(initialSpan);
+        } else {
+          // System disabled: Hide the avatar slot entirely
+          elAvatarContainer.style.display = 'none';
+        }
       };
     }
 
