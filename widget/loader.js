@@ -8,7 +8,7 @@ export default function handler(req, res) {
   const script = `/**
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
  * Upgraded: Smart DOM Shifting & Layout Protection (Sticky Elements Ignored)
- * Fix: Google Favicon API wrapped in CORS Proxy to accurately catch 404s
+ * Fix: Replaced Google Favicon with Unavatar to natively trigger onerror on 404s (No Proxies)
  */
 (function () {
   'use strict';
@@ -317,11 +317,12 @@ export default function handler(req, res) {
     if (elFaviconImg && elAvatarContainer) {
       var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
       
-      // 1. Get the raw Google URL
-      var googleFaviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&url=' + encodeURIComponent(cleanTargetUrl) + '&size=128';
+      // Clean down to just the domain (e.g., 'vgithub.com')
+      var domainOnly = cleanTargetUrl.replace(/^https?:\\/\\//, '').split('/')[0];
       
-      // 2. Wrap it in a public CORS Proxy (AllOrigins) to bypass browser restrictions
-      var proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(googleFaviconUrl);
+      // Use Unavatar with ?fallback=false. 
+      // If the logo doesn't exist, it throws a pure 404 (No CORS needed, No Globe Image)
+      var faviconUrl = 'https://unavatar.io/' + domainOnly + '?fallback=false';
       
       // Reset layout on rotation
       elAvatarContainer.innerHTML = '';
@@ -329,42 +330,26 @@ export default function handler(req, res) {
       elAvatarContainer.style.display = 'flex';
       elAvatarContainer.style.background = 'transparent';
       
-      // Hide image initially while we check the true status
-      elFaviconImg.style.display = 'none';
+      // Load standard image tag (bypass all CORS issues)
+      elFaviconImg.src = faviconUrl;
+      elFaviconImg.style.display = 'block';
       
-      // Use fetch on the PROXY url. Now we can actually see Google's 404!
-      fetch(proxyUrl)
-        .then(function(res) {
-          if (!res.ok || res.status === 404) {
-            throw new Error('Google Favicon 404 / Missing');
-          }
-          return res.blob();
-        })
-        .then(function(blob) {
-          var objectUrl = URL.createObjectURL(blob);
-          elFaviconImg.src = objectUrl;
-          elFaviconImg.style.display = 'block';
+      // Because we use ?fallback=false, missing images trigger this standard onerror perfectly!
+      elFaviconImg.onerror = function () {
+        elFaviconImg.style.display = 'none';
+        
+        if (ENABLE_AUTO_FAVICON_FALLBACK) {
+          var initialSpan = document.createElement('span');
+          var fallbackLetter = promotion.name ? promotion.name[0] : (promotion.domain ? promotion.domain[0] : '?');
           
-          elFaviconImg.onload = function() {
-            URL.revokeObjectURL(objectUrl);
-          };
-        })
-        .catch(function(err) {
-          // The proxy successfully caught the 404! Trigger the Fallback system.
-          elFaviconImg.style.display = 'none';
-          
-          if (ENABLE_AUTO_FAVICON_FALLBACK) {
-            var initialSpan = document.createElement('span');
-            var fallbackLetter = promotion.name ? promotion.name[0] : (promotion.domain ? promotion.domain[0] : '?');
-            
-            initialSpan.textContent = fallbackLetter.toUpperCase();
-            initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
-            elAvatarContainer.style.background = gradient(promotion);
-            elAvatarContainer.appendChild(initialSpan);
-          } else {
-            elAvatarContainer.style.display = 'none';
-          }
-        });
+          initialSpan.textContent = fallbackLetter.toUpperCase();
+          initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
+          elAvatarContainer.style.background = gradient(promotion);
+          elAvatarContainer.appendChild(initialSpan);
+        } else {
+          elAvatarContainer.style.display = 'none';
+        }
+      };
     }
 
     track('impression', {
