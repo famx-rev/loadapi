@@ -1,11 +1,11 @@
 // File: pages/api/widget/loader.js
 export default function handler(req, res) {
-  try {
-    if (req.method !== 'GET') {
-      return res.status(405).send('Method not allowed');
-    }
+  if (req.method !== 'GET') {
+    res.status(405).send('Method not allowed');
+    return;
+  }
 
-    const script = `/**
+  const script = `/**
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
  * Upgraded: Smart DOM Shifting & Layout Protection (Sticky Elements Ignored)
  */
@@ -25,6 +25,12 @@ export default function handler(req, res) {
 
   var apiBase = 'https://loadapi.vercel.app';
   var BAR_HEIGHT = 44;
+  
+  // ==========================================
+  // TOGGLE: True = Show Auto-Letter on 404 | False = Disable system completely
+  var ENABLE_AUTO_FAVICON_FALLBACK = true; 
+  // ==========================================
+
   var layoutObserver = null;
   var isDismissed = false;
 
@@ -37,7 +43,6 @@ export default function handler(req, res) {
   var trackedHoverPromoId = null;
 
   var elProfileName, elProfileTag, elFaviconImg, elAvatarContainer, elVisitBtn;
-  var handleRoute, handleVisibility;
 
   function debounce(func, wait) {
     var timeout;
@@ -142,9 +147,11 @@ export default function handler(req, res) {
       if (isDismissed || !el || el.nodeType !== 1) return;
       
       if (el.hasAttribute('data-loadbar-ignore')) return; 
+      
       if (el === root || (root && root.contains && root.contains(el))) return;
       
       var cs = window.getComputedStyle(el);
+      
       if (cs.position !== 'fixed') return;
 
       var topRaw = cs.top;
@@ -181,7 +188,7 @@ export default function handler(req, res) {
   function sweepFixedElements(root) {
     if (isDismissed) return;
     try {
-      var nodes = document.querySelectorAll('header, nav, div, section, [style*="fixed"]');
+      var nodes = document.querySelectorAll('*');
       for (var i = 0; i < nodes.length; i++) {
         shiftFixedElement(nodes[i], root);
       }
@@ -262,6 +269,11 @@ export default function handler(req, res) {
 
   fetchBatch(true);
 
+  // ==========================================
+  // ROTATION TOGGLE AND VISIBILITY LOGIC
+  // ==========================================
+  var ENABLE_VISIBILITY_PAUSE = true; // Set to false to use original constant rotation
+
   function startRotation() {
     if (isDismissed || rotationTimer) return;
     rotationTimer = setInterval(rotateAd, 8000);
@@ -274,19 +286,23 @@ export default function handler(req, res) {
     }
   }
 
-  if (!document.hidden) {
-    startRotation();
-  }
-  
-  handleVisibility = function() {
-    if (isDismissed) return;
-    if (document.hidden) {
-      stopRotation();
-    } else {
+  if (ENABLE_VISIBILITY_PAUSE) {
+    if (!document.hidden) {
       startRotation();
     }
-  };
-  document.addEventListener('visibilitychange', handleVisibility);
+    
+    document.addEventListener('visibilitychange', function() {
+      if (isDismissed) return;
+      if (document.hidden) {
+        stopRotation();
+      } else {
+        startRotation();
+      }
+    });
+  } else {
+    startRotation();
+  }
+  // ==========================================
 
   function updateBarContent(promotion) {
     var newPromoId = promotion.id || promotion._id || promotion.startup_id || null;
@@ -304,17 +320,31 @@ export default function handler(req, res) {
       var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
       var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + cleanTargetUrl + '&size=128';
       
+      // Reset layout on rotation (fixes bug if previous image had a 404 error)
+      elAvatarContainer.innerHTML = '';
+      elAvatarContainer.appendChild(elFaviconImg);
+      elAvatarContainer.style.display = 'flex';
+      elAvatarContainer.style.background = 'transparent';
+
       elFaviconImg.src = faviconUrl;
       elFaviconImg.style.display = 'block';
       
       elFaviconImg.onerror = function () {
         elFaviconImg.style.display = 'none';
-        elAvatarContainer.innerHTML = '';
-        var initialSpan = document.createElement('span');
-        initialSpan.textContent = (promotion.name || '?')[0].toUpperCase();
-        initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
-        elAvatarContainer.style.background = gradient(promotion);
-        elAvatarContainer.appendChild(initialSpan);
+        
+        if (ENABLE_AUTO_FAVICON_FALLBACK) {
+          var initialSpan = document.createElement('span');
+          // Grab first letter from name or domain, default to '?'
+          var fallbackLetter = promotion.name ? promotion.name[0] : (promotion.domain ? promotion.domain[0] : '?');
+          
+          initialSpan.textContent = fallbackLetter.toUpperCase();
+          initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
+          elAvatarContainer.style.background = gradient(promotion);
+          elAvatarContainer.appendChild(initialSpan);
+        } else {
+          // System disabled: Hide the avatar slot entirely
+          elAvatarContainer.style.display = 'none';
+        }
       };
     }
 
@@ -435,11 +465,10 @@ export default function handler(req, res) {
     popover.innerHTML =
       '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Founder-to-founder growth</div>' +
       '<div style="opacity:0.85;margin-bottom:10px;">This bar shows startups from the Loadbar network &mdash; founders who display each startup&#39;s products for free mutual traffic. No ads, no cost.</div>' +
-      '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free \\u2192</a>';
+      '<a href="https://loadbar.vercel.app" target="_blank" rel="noopener noreferrer" style="color:#10b981;font-weight:600;text-decoration:none;display:inline-block;">Have a startup? Join free \u2192</a>';
 
     popover.addEventListener('click', function(e) { e.stopPropagation(); });
-
-    shadow.addEventListener('click', function(e) {
+    document.addEventListener('click', function(e) {
       if (popover.style.display === 'block' && !popover.contains(e.target) && e.target !== infoBtn) {
         popover.style.display = 'none';
       }
@@ -471,7 +500,7 @@ export default function handler(req, res) {
     profile.appendChild(profileText);
 
     elVisitBtn.target = '_blank';
-    elVisitBtn.textContent = 'Visit \\u2192'; 
+    elVisitBtn.textContent = 'Visit \u2192'; 
     elVisitBtn.style.cssText =
       'display:inline-flex;align-items:center;gap:4px;flex-shrink:0;' +
       'padding:4px 12px;border-radius:999px;font-size:11px;font-weight:500;' +
@@ -486,7 +515,7 @@ export default function handler(req, res) {
     });
 
     var closeBtn = document.createElement('button');
-    closeBtn.textContent = '\\u00d7'; 
+    closeBtn.textContent = '\u00d7'; 
     closeBtn.setAttribute('aria-label', 'Close bar');
     closeBtn.style.cssText =
       'flex-shrink:0;border:none;background:transparent;font-size:18px;' +
@@ -496,24 +525,18 @@ export default function handler(req, res) {
       e.stopPropagation();
       isDismissed = true;
       
-      stopRotation();
+      stopRotation(); // Cleanly clears the interval using the universal function
       
       if (layoutObserver) {
         layoutObserver.disconnect();
         layoutObserver = null;
       }
-
-      window.removeEventListener('popstate', handleRoute);
-      window.removeEventListener('hashchange', handleRoute);
-      document.removeEventListener('visibilitychange', handleVisibility);
-
       root.remove();
       
       if (html) html.style.removeProperty('--loadbar-height');
 
       if (body) {
-        var currentPad = parseInt(window.getComputedStyle(body).paddingTop) || 0;
-        body.style.paddingTop = Math.max(0, currentPad - BAR_HEIGHT) + 'px';
+        body.style.paddingTop = originalBodyPaddingTop;
         body.style.transition = originalBodyTransition;
       }
       if (html) {
@@ -566,7 +589,7 @@ export default function handler(req, res) {
       }
     } catch (e) {}
 
-    handleRoute = function() {
+    var handleRoute = function() {
       if (!isDismissed) sweepFixedElements(root);
     };
     window.addEventListener('popstate', handleRoute);
@@ -576,15 +599,9 @@ export default function handler(req, res) {
   }
 })();`;
 
-    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
-    return res.status(200).send(script);
-  } catch (err) {
-    console.error('[Loadbar Loader API Error]:', err);
-    if (!res.headersSent) {
-      return res.status(500).json({ error: 'Internal Server Error' });
-    }
-  }
+  res.send(script);
 }
