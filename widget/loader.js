@@ -6,10 +6,8 @@ export default function handler(req, res) {
   }
 
   const script = `/**
- * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
- * Upgraded: Smart DOM Shifting & Layout Protection (Sticky Elements Ignored)
- * Fix: Replaced Google Favicon with Unavatar to natively trigger onerror on 404s (No Proxies)
- * Feature: Image Preloading added for smoother rotation
+ * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect
+ * Upgraded: Perfect Single-Fetch Image Preloading
  */
 (function () {
   'use strict';
@@ -34,9 +32,8 @@ export default function handler(req, res) {
   var ENABLE_AUTO_FAVICON_FALLBACK = true; 
   var ENABLE_VISIBILITY_PAUSE = true; 
   
-  // TIMINGS (Manually define in milliseconds)
-  var ROTATION_INTERVAL_MS = 8000; // Time each ad stays visible (8 seconds)
-  var PRELOAD_DELAY_MS = 2000;     // Delay before preloading the NEXT ad's image (2 seconds)
+  var ROTATION_INTERVAL_MS = 8000; // Time each ad stays visible
+  var PRELOAD_DELAY_MS = 2000;     // Delay before preloading the NEXT ad's image
   // ==========================================
 
   var layoutObserver = null;
@@ -50,7 +47,10 @@ export default function handler(req, res) {
   var isFetching = false;
   var trackedHoverPromoId = null;
 
-  var elProfileName, elProfileTag, elFaviconImg, elAvatarContainer, elVisitBtn;
+  // Single-Fetch Image Cache
+  var imageNodeCache = {};
+
+  var elProfileName, elProfileTag, elAvatarContainer, elVisitBtn;
 
   function debounce(func, wait) {
     var timeout;
@@ -77,17 +77,6 @@ export default function handler(req, res) {
       if (el.classList && el.classList.contains('dark')) return 'dark';
       if (el.classList && el.classList.contains('light')) return 'light';
     }
-
-    try {
-      var bg = window.getComputedStyle(document.body).backgroundColor;
-      var rgb = bg.match(/\\d+/g);
-      if (rgb && rgb.length >= 3) {
-        var luminance = (0.299 * parseInt(rgb[0]) + 0.587 * parseInt(rgb[1]) + 0.114 * parseInt(rgb[2])) / 255;
-        if (luminance < 0.5) return 'dark';
-        if (luminance > 0.5) return 'light';
-      }
-    } catch (e) {}
-
     return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
   }
 
@@ -95,11 +84,8 @@ export default function handler(req, res) {
     var target = rawUrl || rawDomain || '';
     if (!target) return '';
     try {
-      if (!/^https?:\\/\\//i.test(target)) {
-        target = 'https://' + target;
-      }
-      var parsed = new URL(target);
-      return parsed.origin;
+      if (!/^https?:\\/\\//i.test(target)) target = 'https://' + target;
+      return new URL(target).origin;
     } catch (e) {
       return target;
     }
@@ -118,28 +104,20 @@ export default function handler(req, res) {
       timestamp: new Date().toISOString(),
       url: window.location.href,
       referrer: document.referrer,
-      userAgent: navigator.userAgent,
-      screenResolution: window.screen.width + 'x' + window.screen.height,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      language: navigator.language
+      userAgent: navigator.userAgent
     };
-
     if (extra) {
       for (var k in extra) {
         if (extra.hasOwnProperty(k)) payload[k] = extra[k];
       }
     }
-
     try {
       fetch(apiBase + '/api/track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         keepalive: true,
-      }).catch(function (err) {
-        console.warn('[Loadbar] Track error:', err);
-      });
+      }).catch(function (err) {});
     } catch (e) {}
   }
 
@@ -222,17 +200,24 @@ export default function handler(req, res) {
 
   var serveUrl = apiBase + '/api/serve?startup_id=' + encodeURIComponent(startupId);
 
-  // PRELOAD LOGIC: Fetches image in background to cache it for the next rotation
+  // Helper to generate the unavatar url
+  function getFaviconUrl(promotion) {
+    var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
+    var domainOnly = cleanTargetUrl.replace(/^https?:\\/\\//, '').split('/')[0];
+    return 'https://unavatar.io/' + domainOnly + '?fallback=false';
+  }
+
+  // Preloads the image exactly once by creating and caching the DOM node
   function preloadNextFavicon() {
     if (promoQueue.length === 0) return;
+    var url = getFaviconUrl(promoQueue[0]);
     
-    var nextPromo = promoQueue[0];
-    var cleanTargetUrl = cleanUrl(nextPromo.url, nextPromo.domain);
-    var domainOnly = cleanTargetUrl.replace(/^https?:\\/\\//, '').split('/')[0];
-    var faviconUrl = 'https://unavatar.io/' + domainOnly + '?fallback=false';
-
-    var preloader = new Image();
-    preloader.src = faviconUrl;
+    // If we haven't built this exact image node yet, build it now (1 network request)
+    if (!imageNodeCache[url]) {
+      var img = document.createElement('img');
+      img.src = url;
+      imageNodeCache[url] = img;
+    }
   }
 
   function rotateAd() {
@@ -247,7 +232,7 @@ export default function handler(req, res) {
       
       updateBarContent(promoToShow);
 
-      // Preload the next item in the queue after a small delay to not block rendering
+      // Trigger preload for the next ad safely
       setTimeout(preloadNextFavicon, PRELOAD_DELAY_MS);
 
       if (promoQueue.length === 0) {
@@ -274,20 +259,17 @@ export default function handler(req, res) {
         if (!data) return;
         
         var list = data.promotions || (data.promotion ? [data.promotion] : []);
-        
         if (list.length > 0) {
           promoQueue = promoQueue.concat(list);
           if (andRotateImmediately) {
             rotateAd();
           } else {
-            // Queue is refreshed, make sure we preload the next item
             setTimeout(preloadNextFavicon, PRELOAD_DELAY_MS);
           }
         }
       })
       .catch(function (e) {
         isFetching = false;
-        console.warn('[Loadbar] Could not fetch batch:', e.message || e);
       });
   }
 
@@ -306,17 +288,11 @@ export default function handler(req, res) {
   }
 
   if (ENABLE_VISIBILITY_PAUSE) {
-    if (!document.hidden) {
-      startRotation();
-    }
-    
+    if (!document.hidden) startRotation();
     document.addEventListener('visibilitychange', function() {
       if (isDismissed) return;
-      if (document.hidden) {
-        stopRotation();
-      } else {
-        startRotation();
-      }
+      if (document.hidden) stopRotation();
+      else startRotation();
     });
   } else {
     startRotation();
@@ -324,7 +300,6 @@ export default function handler(req, res) {
 
   function updateBarContent(promotion) {
     var newPromoId = promotion.id || promotion._id || promotion.startup_id || null;
-    
     if (currentPromoId === newPromoId) return;
 
     currentPromoId = newPromoId;
@@ -334,26 +309,35 @@ export default function handler(req, res) {
     if (elProfileTag) elProfileTag.textContent = promotion.tagline ? ' — ' + promotion.tagline : '';
     if (elVisitBtn) elVisitBtn.href = currentPromoUrl;
 
-    if (elFaviconImg && elAvatarContainer) {
-      var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
-      var domainOnly = cleanTargetUrl.replace(/^https?:\\/\\//, '').split('/')[0];
-      var faviconUrl = 'https://unavatar.io/' + domainOnly + '?fallback=false';
+    if (elAvatarContainer) {
+      var faviconUrl = getFaviconUrl(promotion);
       
+      // Use cached DOM node, or create it if missing (e.g. first ad on load)
+      var imgNode = imageNodeCache[faviconUrl];
+      if (!imgNode) {
+        imgNode = document.createElement('img');
+        imgNode.src = faviconUrl;
+        imageNodeCache[faviconUrl] = imgNode;
+      }
+
+      var isDark = detectTheme() === 'dark';
+      imgNode.style.cssText =
+        'width:100%;height:100%;object-fit:contain;display:block;background:transparent;' +
+        (isDark ? 'mix-blend-mode:lighten;' : 'mix-blend-mode:multiply;');
+
       elAvatarContainer.innerHTML = '';
-      elAvatarContainer.appendChild(elFaviconImg);
       elAvatarContainer.style.display = 'flex';
       elAvatarContainer.style.background = 'transparent';
+      elAvatarContainer.appendChild(imgNode);
       
-      elFaviconImg.src = faviconUrl;
-      elFaviconImg.style.display = 'block';
-      
-      elFaviconImg.onerror = function () {
-        elFaviconImg.style.display = 'none';
+      // Fallback display logic
+      function showFallback() {
+        imgNode.style.display = 'none';
+        imgNode.dataset.failed = 'true';
         
         if (ENABLE_AUTO_FAVICON_FALLBACK) {
           var initialSpan = document.createElement('span');
           var fallbackLetter = promotion.name ? promotion.name[0] : (promotion.domain ? promotion.domain[0] : '?');
-          
           initialSpan.textContent = fallbackLetter.toUpperCase();
           initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
           elAvatarContainer.style.background = gradient(promotion);
@@ -361,7 +345,13 @@ export default function handler(req, res) {
         } else {
           elAvatarContainer.style.display = 'none';
         }
-      };
+      }
+
+      if (imgNode.dataset.failed === 'true') {
+        showFallback();
+      } else {
+        imgNode.onerror = showFallback;
+      }
     }
 
     track('impression', {
@@ -380,9 +370,7 @@ export default function handler(req, res) {
     var originalBodyTransition = body ? body.style.transition || '' : '';
     var originalHtmlTransition = html ? html.style.transition || '' : '';
 
-    if (html) {
-      html.style.setProperty('--loadbar-height', BAR_HEIGHT + 'px');
-    }
+    if (html) html.style.setProperty('--loadbar-height', BAR_HEIGHT + 'px');
 
     var root = document.createElement('div');
     root.id = 'loadbar-root';
@@ -401,7 +389,6 @@ export default function handler(req, res) {
     var popover = document.createElement('div');
     
     elAvatarContainer = document.createElement('span');
-    elFaviconImg = document.createElement('img');
     elProfileName = document.createElement('span');
     elProfileTag = document.createElement('span');
     elVisitBtn = document.createElement('a');
@@ -415,12 +402,12 @@ export default function handler(req, res) {
           ? 'background:rgba(24,24,27,0.92);border-bottom:1px solid rgba(255,255,255,0.1);color:#f3f4f6;'
           : 'background:rgba(255,255,255,0.92);border-bottom:1px solid rgba(0,0,0,0.08);color:#111827;');
 
-      if (elAvatarContainer) elAvatarContainer.style.background = 'transparent';
-
-      if (elFaviconImg) {
-        elFaviconImg.style.cssText =
-          'width:100%;height:100%;object-fit:contain;display:block;background:transparent;' +
-          (isDark ? 'mix-blend-mode:lighten;' : 'mix-blend-mode:multiply;');
+      if (elAvatarContainer) {
+        elAvatarContainer.style.background = 'transparent';
+        var imgNode = elAvatarContainer.querySelector('img');
+        if (imgNode) {
+          imgNode.style.mixBlendMode = isDark ? 'lighten' : 'multiply';
+        }
       }
 
       if (popover) {
@@ -499,7 +486,6 @@ export default function handler(req, res) {
     elAvatarContainer.style.cssText =
       'width:22px;height:22px;border-radius:5px;display:flex;align-items:center;' +
       'justify-content:center;overflow:hidden;flex-shrink:0;background:transparent;';
-    elAvatarContainer.appendChild(elFaviconImg);
 
     applyThemeStyles(currentTheme === 'dark');
 
@@ -540,7 +526,6 @@ export default function handler(req, res) {
     closeBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       isDismissed = true;
-      
       stopRotation();
       
       if (layoutObserver) {
