@@ -7,7 +7,7 @@ export default function handler(req, res) {
 
   const script = `/**
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect
- * Upgraded: Perfect Single-Fetch + Background 404 Fallback Fix
+ * Upgraded: Perfect Single-Fetch + Background 404 Fallback Fix + Perfect Hovers
  */
 (function () {
   'use strict';
@@ -46,6 +46,7 @@ export default function handler(req, res) {
   var promoQueue = [];
   var isFetching = false;
   var trackedHoverPromoId = null;
+  var isBarHovered = false; // Tracks if the mouse is currently over the bar
 
   // Single-Fetch Image Cache
   var imageNodeCache = {};
@@ -119,6 +120,13 @@ export default function handler(req, res) {
         keepalive: true,
       }).catch(function (err) {});
     } catch (e) {}
+  }
+
+  function checkAndTrackHover() {
+    if (isBarHovered && trackedHoverPromoId !== currentPromoId && currentPromoId) {
+      trackedHoverPromoId = currentPromoId;
+      track('hover', { device: detectDevice(), promoted_id: currentPromoId, hovered: true });
+    }
   }
 
   function detectDevice() {
@@ -365,6 +373,9 @@ export default function handler(req, res) {
       device: detectDevice(),
       promoted_id: currentPromoId
     });
+
+    // Check if the user's mouse is currently resting on the bar during a rotation
+    checkAndTrackHover();
   }
 
   function buildBarDOM() {
@@ -386,6 +397,15 @@ export default function handler(req, res) {
       'transform:translateY(-100%);transition:transform 0.4s ease;';
 
     var shadow = root.attachShadow ? root.attachShadow({ mode: 'closed' }) : root;
+
+    // Inject CSS for flawless button hover states inside the Shadow DOM
+    var styleSheet = document.createElement('style');
+    styleSheet.textContent = 
+      '.lb-info-btn { opacity: 0.6; }' +
+      '.lb-info-btn:hover { opacity: 1 !important; }' +
+      '.lb-visit-btn { background: rgba(125,125,125,0.12); }' +
+      '.lb-visit-btn:hover { background: rgba(125,125,125,0.22) !important; }';
+    shadow.appendChild(styleSheet);
     
     var container = document.createElement('div');
     container.style.cssText = 
@@ -435,11 +455,14 @@ export default function handler(req, res) {
 
     bar.addEventListener('click', handlePromoVisit);
 
+    // Track mouse presence over the entire bar
     bar.addEventListener('mouseenter', function () {
-      if (trackedHoverPromoId !== currentPromoId) {
-        trackedHoverPromoId = currentPromoId;
-        track('hover', { device: detectDevice(), promoted_id: currentPromoId, hovered: true });
-      }
+      isBarHovered = true;
+      checkAndTrackHover();
+    });
+
+    bar.addEventListener('mouseleave', function () {
+      isBarHovered = false;
     });
 
     var brand = document.createElement('div');
@@ -447,14 +470,13 @@ export default function handler(req, res) {
 
     var infoBtn = document.createElement('button');
     infoBtn.textContent = 'i';
+    infoBtn.className = 'lb-info-btn'; // Use CSS class for hover
     infoBtn.style.cssText =
       'width:15px;height:15px;border-radius:50%;border:1px solid currentColor;' +
       'background:transparent;color:currentColor;font-size:10px;font-weight:700;' +
       'font-family:serif;font-style:italic;display:inline-flex;align-items:center;' +
-      'justify-content:center;cursor:pointer;opacity:0.6;padding:0;line-height:1;margin-right:2px;flex-shrink:0;';
+      'justify-content:center;cursor:pointer;padding:0;line-height:1;margin-right:2px;flex-shrink:0;';
 
-    infoBtn.addEventListener('mouseenter', function() { infoBtn.style.opacity = '1'; });
-    infoBtn.addEventListener('mouseleave', function() { infoBtn.style.opacity = '0.6'; });
     infoBtn.addEventListener('click', function(e) {
       e.stopPropagation();
       popover.style.display = popover.style.display === 'none' ? 'block' : 'none';
@@ -510,14 +532,13 @@ export default function handler(req, res) {
 
     elVisitBtn.target = '_blank';
     elVisitBtn.textContent = 'Visit \u2192'; 
+    elVisitBtn.className = 'lb-visit-btn'; // Use CSS class for hover
     elVisitBtn.style.cssText =
       'display:inline-flex;align-items:center;gap:4px;flex-shrink:0;' +
       'padding:4px 12px;border-radius:999px;font-size:11px;font-weight:500;' +
-      'text-decoration:none;color:currentColor;background:rgba(125,125,125,0.12);' +
+      'text-decoration:none;color:currentColor;' +
       'transition:background 0.15s ease;cursor:pointer;margin-right:4px;';
     
-    elVisitBtn.addEventListener('mouseenter', function () { elVisitBtn.style.background = 'rgba(125,125,125,0.22)'; });
-    elVisitBtn.addEventListener('mouseleave', function () { elVisitBtn.style.background = 'rgba(125,125,125,0.12)'; });
     elVisitBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       handlePromoVisit(e);
