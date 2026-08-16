@@ -7,7 +7,7 @@ export default function handler(req, res) {
 
   const script = `/**
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect
- * Upgraded: Perfect Single-Fetch Image Preloading
+ * Upgraded: Perfect Single-Fetch + Background 404 Fallback Fix
  */
 (function () {
   'use strict';
@@ -207,14 +207,17 @@ export default function handler(req, res) {
     return 'https://unavatar.io/' + domainOnly + '?fallback=false';
   }
 
-  // Preloads the image exactly once by creating and caching the DOM node
+  // Preloads the image perfectly once and catches background 404s
   function preloadNextFavicon() {
     if (promoQueue.length === 0) return;
     var url = getFaviconUrl(promoQueue[0]);
     
-    // If we haven't built this exact image node yet, build it now (1 network request)
     if (!imageNodeCache[url]) {
       var img = document.createElement('img');
+      // If it 404s in the background, remember it!
+      img.onerror = function() {
+        img.dataset.failed = 'true';
+      };
       img.src = url;
       imageNodeCache[url] = img;
     }
@@ -312,7 +315,7 @@ export default function handler(req, res) {
     if (elAvatarContainer) {
       var faviconUrl = getFaviconUrl(promotion);
       
-      // Use cached DOM node, or create it if missing (e.g. first ad on load)
+      // Get background-preloaded image, or create a fresh one
       var imgNode = imageNodeCache[faviconUrl];
       if (!imgNode) {
         imgNode = document.createElement('img');
@@ -347,10 +350,14 @@ export default function handler(req, res) {
         }
       }
 
-      if (imgNode.dataset.failed === 'true') {
+      // 1. Did it already fail in the background?
+      // 2. Or is it fully loaded but totally broken (0 width)?
+      if (imgNode.dataset.failed === 'true' || (imgNode.complete && imgNode.naturalWidth === 0)) {
         showFallback();
       } else {
+        // If it's still loading normally, set onerror to show fallback when it eventually fails
         imgNode.onerror = showFallback;
+        imgNode.style.display = 'block';
       }
     }
 
