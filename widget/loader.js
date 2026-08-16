@@ -272,7 +272,7 @@ export default function handler(req, res) {
   // ==========================================
   // ROTATION TOGGLE AND VISIBILITY LOGIC
   // ==========================================
-  var ENABLE_VISIBILITY_PAUSE = true; // Set to false to use original constant rotation
+  var ENABLE_VISIBILITY_PAUSE = true; 
 
   function startRotation() {
     if (isDismissed || rotationTimer) return;
@@ -318,7 +318,9 @@ export default function handler(req, res) {
 
     if (elFaviconImg && elAvatarContainer) {
       var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
-      var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=' + cleanTargetUrl + '&size=128';
+      
+      // FIX: Removed fallback_opts=TYPE,SIZE,URL so Google returns a pure 404 error if missing
+      var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&url=' + cleanTargetUrl + '&size=128';
       
       // Reset layout on rotation (fixes bug if previous image had a 404 error)
       elAvatarContainer.innerHTML = '';
@@ -525,7 +527,7 @@ export default function handler(req, res) {
       e.stopPropagation();
       isDismissed = true;
       
-      stopRotation(); // Cleanly clears the interval using the universal function
+      stopRotation();
       
       if (layoutObserver) {
         layoutObserver.disconnect();
