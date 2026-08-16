@@ -45,11 +45,13 @@ export default function handler(req, res) {
 
   var promoQueue = [];
   var isFetching = false;
-  var trackedHoverPromoId = null;
+  
+  // FIXED: Track hovered IDs permanently so it never sends duplicate hovers for the same ad
+  var trackedHoverPromoIds = {}; 
   var isBarHovered = false; // Tracks if the mouse is currently over the bar
 
-  // Single-Fetch Image Cache
-  var imageNodeCache = {};
+  // FIXED: Store DOM nodes perfectly to prevent browser re-fetching on append
+  var imageCache = {};
 
   var elProfileName, elProfileTag, elAvatarContainer, elVisitBtn;
 
@@ -123,8 +125,9 @@ export default function handler(req, res) {
   }
 
   function checkAndTrackHover() {
-    if (isBarHovered && trackedHoverPromoId !== currentPromoId && currentPromoId) {
-      trackedHoverPromoId = currentPromoId;
+    // Only track if hovered, ad is loaded, and we haven't already tracked this specific ad ID
+    if (isBarHovered && currentPromoId && !trackedHoverPromoIds[currentPromoId]) {
+      trackedHoverPromoIds[currentPromoId] = true;
       track('hover', { device: detectDevice(), promoted_id: currentPromoId, hovered: true });
     }
   }
@@ -215,20 +218,46 @@ export default function handler(req, res) {
     return 'https://unavatar.io/' + domainOnly + '?fallback=false';
   }
 
-  // Preloads the image perfectly once and catches background 404s
+  // FIXED: Creates the DOM elements once. Appends them invisibly if container is ready.
+  function getOrCreateAvatarNodes(promotion) {
+    var url = getFaviconUrl(promotion);
+    if (imageCache[url]) return imageCache[url];
+
+    var img = document.createElement('img');
+    img.src = url;
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:none;background:transparent;';
+    
+    var fallback = document.createElement('span');
+    var letter = promotion.name ? promotion.name[0] : (promotion.domain ? promotion.domain[0] : '?');
+    fallback.textContent = letter.toUpperCase();
+    fallback.style.cssText = 'font-size:10px;font-weight:700;color:#fff;display:none;align-items:center;justify-content:center;width:100%;height:100%;';
+    fallback.dataset.bg = gradient(promotion);
+
+    var entry = { img: img, fallback: fallback, failed: false, active: false };
+
+    img.onerror = function() {
+      entry.failed = true;
+      img.style.display = 'none';
+      if (ENABLE_AUTO_FAVICON_FALLBACK && entry.active && elAvatarContainer) {
+        fallback.style.display = 'flex';
+        elAvatarContainer.style.background = fallback.dataset.bg;
+      }
+    };
+
+    imageCache[url] = entry;
+
+    // Pre-attach directly to the DOM if it exists to strictly prevent browser re-requests
+    if (elAvatarContainer) {
+      elAvatarContainer.appendChild(img);
+      elAvatarContainer.appendChild(fallback);
+    }
+
+    return entry;
+  }
+
   function preloadNextFavicon() {
     if (promoQueue.length === 0) return;
-    var url = getFaviconUrl(promoQueue[0]);
-    
-    if (!imageNodeCache[url]) {
-      var img = document.createElement('img');
-      // If it 404s in the background, remember it!
-      img.onerror = function() {
-        img.dataset.failed = 'true';
-      };
-      img.src = url;
-      imageNodeCache[url] = img;
-    }
+    getOrCreateAvatarNodes(promoQueue[0]);
   }
 
   function rotateAd() {
@@ -321,51 +350,37 @@ export default function handler(req, res) {
     if (elVisitBtn) elVisitBtn.href = currentPromoUrl;
 
     if (elAvatarContainer) {
-      var faviconUrl = getFaviconUrl(promotion);
-      
-      // Get background-preloaded image, or create a fresh one
-      var imgNode = imageNodeCache[faviconUrl];
-      if (!imgNode) {
-        imgNode = document.createElement('img');
-        imgNode.src = faviconUrl;
-        imageNodeCache[faviconUrl] = imgNode;
-      }
-
-      var isDark = detectTheme() === 'dark';
-      imgNode.style.cssText =
-        'width:100%;height:100%;object-fit:contain;display:block;background:transparent;' +
-        (isDark ? 'mix-blend-mode:lighten;' : 'mix-blend-mode:multiply;');
-
-      elAvatarContainer.innerHTML = '';
-      elAvatarContainer.style.display = 'flex';
-      elAvatarContainer.style.background = 'transparent';
-      elAvatarContainer.appendChild(imgNode);
-      
-      // Fallback display logic
-      function showFallback() {
-        imgNode.style.display = 'none';
-        imgNode.dataset.failed = 'true';
-        
-        if (ENABLE_AUTO_FAVICON_FALLBACK) {
-          var initialSpan = document.createElement('span');
-          var fallbackLetter = promotion.name ? promotion.name[0] : (promotion.domain ? promotion.domain[0] : '?');
-          initialSpan.textContent = fallbackLetter.toUpperCase();
-          initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
-          elAvatarContainer.style.background = gradient(promotion);
-          elAvatarContainer.appendChild(initialSpan);
-        } else {
-          elAvatarContainer.style.display = 'none';
+      // Hide all previously displayed images to cleanly transition to the new one
+      for (var key in imageCache) {
+        if (imageCache.hasOwnProperty(key)) {
+          imageCache[key].img.style.display = 'none';
+          imageCache[key].fallback.style.display = 'none';
+          imageCache[key].active = false;
         }
       }
 
-      // 1. Did it already fail in the background?
-      // 2. Or is it fully loaded but totally broken (0 width)?
-      if (imgNode.dataset.failed === 'true' || (imgNode.complete && imgNode.naturalWidth === 0)) {
-        showFallback();
+      var nodes = getOrCreateAvatarNodes(promotion);
+      nodes.active = true;
+
+      // Ensure nodes are attached to the DOM (happens initially if preloaded before DOM was ready)
+      if (!nodes.img.parentNode) {
+        elAvatarContainer.appendChild(nodes.img);
+        elAvatarContainer.appendChild(nodes.fallback);
+      }
+      
+      var isDark = detectTheme() === 'dark';
+      nodes.img.style.mixBlendMode = isDark ? 'lighten' : 'multiply';
+      elAvatarContainer.style.background = 'transparent';
+      
+      // Fallback display logic for broken / missing images
+      if (nodes.failed || (nodes.img.complete && nodes.img.naturalWidth === 0)) {
+        nodes.img.style.display = 'none';
+        if (ENABLE_AUTO_FAVICON_FALLBACK) {
+          nodes.fallback.style.display = 'flex';
+          elAvatarContainer.style.background = nodes.fallback.dataset.bg;
+        }
       } else {
-        // If it's still loading normally, set onerror to show fallback when it eventually fails
-        imgNode.onerror = showFallback;
-        imgNode.style.display = 'block';
+        nodes.img.style.display = 'block';
       }
     }
 
@@ -431,9 +446,11 @@ export default function handler(req, res) {
 
       if (elAvatarContainer) {
         elAvatarContainer.style.background = 'transparent';
-        var imgNode = elAvatarContainer.querySelector('img');
-        if (imgNode) {
-          imgNode.style.mixBlendMode = isDark ? 'lighten' : 'multiply';
+        // Because images are now permanently inside, update mix-blend-mode for all
+        for (var i = 0; i < elAvatarContainer.children.length; i++) {
+          if (elAvatarContainer.children[i].tagName === 'IMG') {
+            elAvatarContainer.children[i].style.mixBlendMode = isDark ? 'lighten' : 'multiply';
+          }
         }
       }
 
