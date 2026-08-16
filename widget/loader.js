@@ -9,6 +9,7 @@ export default function handler(req, res) {
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
  * Upgraded: Smart DOM Shifting & Layout Protection (Sticky Elements Ignored)
  * Fix: Replaced Google Favicon with Unavatar to natively trigger onerror on 404s (No Proxies)
+ * Feature: Image Preloading added for smoother rotation
  */
 (function () {
   'use strict';
@@ -28,8 +29,14 @@ export default function handler(req, res) {
   var BAR_HEIGHT = 44;
   
   // ==========================================
-  // TOGGLE: True = Show Auto-Letter on 404 | False = Disable system completely
+  // CONFIGURATION SETTINGS
+  // ==========================================
   var ENABLE_AUTO_FAVICON_FALLBACK = true; 
+  var ENABLE_VISIBILITY_PAUSE = true; 
+  
+  // TIMINGS (Manually define in milliseconds)
+  var ROTATION_INTERVAL_MS = 8000; // Time each ad stays visible (8 seconds)
+  var PRELOAD_DELAY_MS = 2000;     // Delay before preloading the NEXT ad's image (2 seconds)
   // ==========================================
 
   var layoutObserver = null;
@@ -215,6 +222,19 @@ export default function handler(req, res) {
 
   var serveUrl = apiBase + '/api/serve?startup_id=' + encodeURIComponent(startupId);
 
+  // PRELOAD LOGIC: Fetches image in background to cache it for the next rotation
+  function preloadNextFavicon() {
+    if (promoQueue.length === 0) return;
+    
+    var nextPromo = promoQueue[0];
+    var cleanTargetUrl = cleanUrl(nextPromo.url, nextPromo.domain);
+    var domainOnly = cleanTargetUrl.replace(/^https?:\\/\\//, '').split('/')[0];
+    var faviconUrl = 'https://unavatar.io/' + domainOnly + '?fallback=false';
+
+    var preloader = new Image();
+    preloader.src = faviconUrl;
+  }
+
   function rotateAd() {
     if (isDismissed) return;
 
@@ -226,6 +246,9 @@ export default function handler(req, res) {
       }
       
       updateBarContent(promoToShow);
+
+      // Preload the next item in the queue after a small delay to not block rendering
+      setTimeout(preloadNextFavicon, PRELOAD_DELAY_MS);
 
       if (promoQueue.length === 0) {
         fetchBatch(false); 
@@ -256,6 +279,9 @@ export default function handler(req, res) {
           promoQueue = promoQueue.concat(list);
           if (andRotateImmediately) {
             rotateAd();
+          } else {
+            // Queue is refreshed, make sure we preload the next item
+            setTimeout(preloadNextFavicon, PRELOAD_DELAY_MS);
           }
         }
       })
@@ -267,14 +293,9 @@ export default function handler(req, res) {
 
   fetchBatch(true);
 
-  // ==========================================
-  // ROTATION TOGGLE AND VISIBILITY LOGIC
-  // ==========================================
-  var ENABLE_VISIBILITY_PAUSE = true; 
-
   function startRotation() {
     if (isDismissed || rotationTimer) return;
-    rotationTimer = setInterval(rotateAd, 8000);
+    rotationTimer = setInterval(rotateAd, ROTATION_INTERVAL_MS);
   }
 
   function stopRotation() {
@@ -300,7 +321,6 @@ export default function handler(req, res) {
   } else {
     startRotation();
   }
-  // ==========================================
 
   function updateBarContent(promotion) {
     var newPromoId = promotion.id || promotion._id || promotion.startup_id || null;
@@ -316,25 +336,17 @@ export default function handler(req, res) {
 
     if (elFaviconImg && elAvatarContainer) {
       var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
-      
-      // Clean down to just the domain (e.g., 'vgithub.com')
       var domainOnly = cleanTargetUrl.replace(/^https?:\\/\\//, '').split('/')[0];
-      
-      // Use Unavatar with ?fallback=false. 
-      // If the logo doesn't exist, it throws a pure 404 (No CORS needed, No Globe Image)
       var faviconUrl = 'https://unavatar.io/' + domainOnly + '?fallback=false';
       
-      // Reset layout on rotation
       elAvatarContainer.innerHTML = '';
       elAvatarContainer.appendChild(elFaviconImg);
       elAvatarContainer.style.display = 'flex';
       elAvatarContainer.style.background = 'transparent';
       
-      // Load standard image tag (bypass all CORS issues)
       elFaviconImg.src = faviconUrl;
       elFaviconImg.style.display = 'block';
       
-      // Because we use ?fallback=false, missing images trigger this standard onerror perfectly!
       elFaviconImg.onerror = function () {
         elFaviconImg.style.display = 'none';
         
