@@ -8,6 +8,7 @@ export default function handler(req, res) {
   const script = `/**
  * Loadbar widget loader - Full Bar Click Navigation & Brand Redirect (Batch Prefetching)
  * Upgraded: Smart DOM Shifting & Layout Protection (Sticky Elements Ignored)
+ * Fix: Tracing 404 Status for Favicons to Trigger Auto-Letter Fallback
  */
 (function () {
   'use strict';
@@ -145,13 +146,10 @@ export default function handler(req, res) {
   function shiftFixedElement(el, root) {
     try {
       if (isDismissed || !el || el.nodeType !== 1) return;
-      
       if (el.hasAttribute('data-loadbar-ignore')) return; 
-      
       if (el === root || (root && root.contains && root.contains(el))) return;
       
       var cs = window.getComputedStyle(el);
-      
       if (cs.position !== 'fixed') return;
 
       var topRaw = cs.top;
@@ -318,36 +316,53 @@ export default function handler(req, res) {
 
     if (elFaviconImg && elAvatarContainer) {
       var cleanTargetUrl = cleanUrl(promotion.url, promotion.domain);
-      
-      // FIX: Removed fallback_opts=TYPE,SIZE,URL so Google returns a pure 404 error if missing
       var faviconUrl = 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&url=' + cleanTargetUrl + '&size=128';
       
-      // Reset layout on rotation (fixes bug if previous image had a 404 error)
+      // Reset layout on rotation
       elAvatarContainer.innerHTML = '';
       elAvatarContainer.appendChild(elFaviconImg);
       elAvatarContainer.style.display = 'flex';
       elAvatarContainer.style.background = 'transparent';
-
-      elFaviconImg.src = faviconUrl;
-      elFaviconImg.style.display = 'block';
       
-      elFaviconImg.onerror = function () {
-        elFaviconImg.style.display = 'none';
-        
-        if (ENABLE_AUTO_FAVICON_FALLBACK) {
-          var initialSpan = document.createElement('span');
-          // Grab first letter from name or domain, default to '?'
-          var fallbackLetter = promotion.name ? promotion.name[0] : (promotion.domain ? promotion.domain[0] : '?');
+      // Hide image initially while we check the status
+      elFaviconImg.style.display = 'none';
+      
+      // NEW FIX: Use fetch to trace the exact HTTP Status Code (bypassing Google's globe fallback)
+      fetch(faviconUrl)
+        .then(function(res) {
+          // Explicitly trace the 404 code
+          if (res.status === 404 || !res.ok) {
+            throw new Error('Favicon not found (404)');
+          }
+          return res.blob();
+        })
+        .then(function(blob) {
+          // If valid (200), convert to URL and render
+          var objectUrl = URL.createObjectURL(blob);
+          elFaviconImg.src = objectUrl;
+          elFaviconImg.style.display = 'block';
           
-          initialSpan.textContent = fallbackLetter.toUpperCase();
-          initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
-          elAvatarContainer.style.background = gradient(promotion);
-          elAvatarContainer.appendChild(initialSpan);
-        } else {
-          // System disabled: Hide the avatar slot entirely
-          elAvatarContainer.style.display = 'none';
-        }
-      };
+          // Cleanup memory
+          elFaviconImg.onload = function() {
+            URL.revokeObjectURL(objectUrl);
+          };
+        })
+        .catch(function(err) {
+          // Trigger Fallback system if 404 is caught (or if network fetch fails)
+          elFaviconImg.style.display = 'none';
+          
+          if (ENABLE_AUTO_FAVICON_FALLBACK) {
+            var initialSpan = document.createElement('span');
+            var fallbackLetter = promotion.name ? promotion.name[0] : (promotion.domain ? promotion.domain[0] : '?');
+            
+            initialSpan.textContent = fallbackLetter.toUpperCase();
+            initialSpan.style.cssText = 'font-size:10px;font-weight:700;color:#fff;';
+            elAvatarContainer.style.background = gradient(promotion);
+            elAvatarContainer.appendChild(initialSpan);
+          } else {
+            elAvatarContainer.style.display = 'none';
+          }
+        });
     }
 
     track('impression', {
